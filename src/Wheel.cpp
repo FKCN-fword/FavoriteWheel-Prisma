@@ -895,9 +895,6 @@ namespace Wheel {
                         else if(pad==276 || pad==278)SettingsClick(pad==278);
                         else if(pad==277)LeaveSettings(false);
                         else if(pad==274 || pad==275){std::lock_guard lock(viewMutex);view.settingsTab=NextSettingsTab(view.settingsTab,pad==275?1:-1);}
-                    } else if (down && current.open && !inputGate.Swallowed(identity) &&
-                        ((button->GetDevice()==RE::INPUT_DEVICE::kKeyboard && code==60) || pad==270)) {
-                        EnterSettings(); // Remains reachable even if Favorites itself is bound to F2.
                     } else if(down && current.open && !inputGate.Swallowed(identity) &&
                         ((button->GetDevice()==RE::INPUT_DEVICE::kKeyboard && code==static_cast<unsigned>(Config().switchKey)) || pad==279)) {
                         SwitchWheel();

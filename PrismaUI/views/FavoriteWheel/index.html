@@ -4,13 +4,56 @@
 <meta charset="utf-8">
 <title>FavoriteWheel</title>
 <style>
-html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
-body { font-family: "Malgun Gothic", "Segoe UI", "Microsoft YaHei", "Noto Sans CJK KR", sans-serif; }
+/* Design tokens, geometry and sizes copied from the DOM PrismaUI half-ring. */
+:root {
+  --iron-deep:   rgba(14, 15, 18, 0.88);
+  --iron:        rgba(26, 28, 34, 0.82);
+  --iron-active: rgba(62, 49, 31, 0.92);
+  --iron-off:    rgba(20, 22, 26, 0.55);
+  --line:        rgba(140, 128, 108, 0.28);
+  --line-strong: rgba(200, 121, 31, 0.72);
+  --text:        #ece6d4;
+  --text-mute:   #a39c8b;
+  --text-dim:    #5e5a52;
+  --ember:       #c8791f;
+  --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-user-select: none; }
 #root { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-#dim { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-#stage { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.fw-fade { animation: fwfade 0.14s ease-out; }
-@keyframes fwfade { from { opacity: 0; } to { opacity: 1; } }
+#vignette {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle farthest-corner at 50% 50%,
+    rgba(14, 15, 18, 0) 0, rgba(14, 15, 18, 0) calc(100vw / 6), var(--iron-deep) 100%);
+}
+#stage { position: absolute; }
+#halfring { overflow: visible; }
+
+.wedge { fill: var(--iron); stroke: var(--line); stroke-width: 1; }
+.wedge.active { fill: var(--iron-active); stroke: var(--line-strong); stroke-width: 1.5; }
+.wedge.off { fill: var(--iron-off); }
+.wedge.empty { fill: var(--iron-off); opacity: 0.45; }
+.wedge-label { fill: var(--text); font-family: var(--sans); font-size: 14px; font-weight: 600; text-anchor: middle;
+  dominant-baseline: middle; letter-spacing: 0.015em; }
+.wedge-label.muted { fill: var(--text-dim); font-weight: 500; }
+.wedge-label.active { fill: var(--ember); }
+.icon { color: var(--text); }
+.icon.muted { color: var(--text-dim); }
+.icon.active { color: var(--ember); }
+.icon path, .icon circle, .icon rect {
+  fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.h-centerline { fill: none; stroke: var(--line); stroke-width: 1.4; stroke-linecap: round; opacity: 0.5; }
+.badge { fill: var(--iron-deep); stroke: var(--line-strong); stroke-width: 1; }
+.badge-n { fill: var(--ember); font-family: var(--sans); font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+.cat-cur { fill: var(--ember); font-family: var(--sans); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.02em; }
+.cat-side { fill: var(--text-dim); font-family: var(--sans); font-size: 13px; font-weight: 500; text-anchor: middle; dominant-baseline: middle; }
+.info-name { fill: var(--text); font-family: var(--sans); font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+.info-line { fill: var(--text-mute); font-family: var(--sans); font-size: 13px; text-anchor: middle; dominant-baseline: middle; }
+.info-dim { fill: var(--text-dim); font-family: var(--sans); font-size: 12px; text-anchor: middle; dominant-baseline: middle; }
+.pill { fill: var(--iron-deep); stroke: var(--line); stroke-width: 1; }
+.pill-text { fill: var(--text); font-family: var(--sans); font-size: 16px; text-anchor: middle; dominant-baseline: middle; }
 </style>
 </head>
 <body>
@@ -22,90 +65,65 @@ body { font-family: "Malgun Gothic", "Segoe UI", "Microsoft YaHei", "Noto Sans C
   var root = document.getElementById('root');
   var lastKey = '';
   var lastState = null;
-  var TAU = Math.PI * 2;
-  var SLOTS = 10;
-  var INNER = 116;
-  var OUTER = 264;
 
-  // ------------------------------------------------------------------ helpers
-  function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+  // DOM half-ring constants (design units, viewBox -440..440)
+  var R_INNER = 88, R_OUTER = 190, H_CX = 12, GAP = 0.012;
+  var TOP = -Math.PI / 2, BOT = Math.PI / 2;
+  var CX_TXT = 100; // horizontal centre of the ring bounding box, used for the text rows
+
+  function f(n) { return Math.round(n * 100) / 100; }
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  function f(n) { return Math.round(n * 100) / 100; }
-  function tw(str, size) {
-    var w = 0;
-    for (var i = 0; i < str.length; i++) {
-      var c = str.charCodeAt(i);
-      if (c >= 0x2E80) w += size;
-      else if (c >= 0x41 && c <= 0x5A) w += size * 0.66;
-      else w += size * 0.54;
-    }
-    return w;
-  }
-  function fit(str, size, maxw) {
-    str = String(str);
-    if (tw(str, size) <= maxw) return str;
-    var out = str;
-    while (out.length > 1 && tw(out + '\u2026', size) > maxw) out = out.slice(0, -1);
-    return out + '\u2026';
-  }
-  function wrap(str, size, maxw, maxLines) {
-    str = String(str);
-    var lines = [];
-    var cur = '';
-    for (var i = 0; i < str.length; i++) {
-      var ch = str.charAt(i);
-      if (ch === '\n') { lines.push(cur); cur = ''; continue; }
-      if (tw(cur + ch, size) > maxw && cur.length) {
-        lines.push(cur);
-        cur = ch === ' ' ? '' : ch;
-      } else {
-        cur += ch;
-      }
-    }
-    if (cur.length) lines.push(cur);
-    if (lines.length > maxLines) {
-      lines = lines.slice(0, maxLines);
-      lines[maxLines - 1] = fit(lines[maxLines - 1] + '\u2026\u2026', size, maxw);
-    }
-    return lines;
-  }
-  function pt(r, a) { return [Math.sin(a) * r, -Math.cos(a) * r]; }
+  function hp(r, a) { return [H_CX + r * Math.cos(a), r * Math.sin(a)]; }
   function P(p) { return f(p[0]) + ' ' + f(p[1]); }
-
-  function arcPath(r, a0, a1) {
-    var p0 = pt(r, a0), p1 = pt(r, a1);
-    var large = (a1 - a0) > Math.PI ? 1 : 0;
-    return 'M' + P(p0) + ' A' + f(r) + ' ' + f(r) + ' 0 ' + large + ' 1 ' + P(p1);
+  function sector(ri, ro, a0, a1) {
+    var i0 = hp(ri, a0), i1 = hp(ri, a1), o1 = hp(ro, a1), o0 = hp(ro, a0);
+    return 'M ' + P(i0) + ' A ' + ri + ' ' + ri + ' 0 0 1 ' + P(i1) + ' L ' + P(o1) + ' A ' + ro + ' ' + ro + ' 0 0 0 ' + P(o0) + ' Z';
   }
-  function sectorPath(ri, ro, a0, a1) {
-    var o0 = pt(ro, a0), o1 = pt(ro, a1), i1 = pt(ri, a1), i0 = pt(ri, a0);
-    var large = (a1 - a0) > Math.PI ? 1 : 0;
-    return 'M' + P(o0) + ' A' + ro + ' ' + ro + ' 0 ' + large + ' 1 ' + P(o1) +
-           ' L' + P(i1) + ' A' + ri + ' ' + ri + ' 0 ' + large + ' 0 ' + P(i0) + ' Z';
+  function arc(r, a0, a1) {
+    var p0 = hp(r, a0), p1 = hp(r, a1);
+    return 'M ' + P(p0) + ' A ' + r + ' ' + r + ' 0 0 1 ' + P(p1);
   }
 
-  // text with the baseline shifted so that y is the visual centre
-  function T(x, y, str, size, fill, extra) {
-    return '<text x="' + f(x) + '" y="' + f(y + size * 0.35) + '" font-size="' + f(size) + '" text-anchor="middle" fill="' + fill + '"' +
-           (extra || '') + '>' + esc(str) + '</text>';
+  // text width budget: Latin = 1 unit (about 7px), CJK = 2 units
+  function units(s) {
+    var u = 0;
+    for (var i = 0; i < s.length; i++) u += s.charCodeAt(i) >= 0x2E80 ? 2 : 1;
+    return u;
   }
-  function diamond(x, y, r, fill, opacity) {
-    return '<path d="M' + f(x) + ' ' + f(y - r) + ' L' + f(x + r) + ' ' + f(y) + ' L' + f(x) + ' ' + f(y + r) + ' L' + f(x - r) + ' ' + f(y) +
-           ' Z" fill="' + fill + '"' + (opacity != null ? ' fill-opacity="' + opacity + '"' : '') + '/>';
+  function cut(s, max) {
+    s = String(s);
+    var out = '', u = 0;
+    for (var i = 0; i < s.length; i++) {
+      var w = s.charCodeAt(i) >= 0x2E80 ? 2 : 1;
+      if (u + w > max - 1) return out + '\u2026';
+      out += s.charAt(i); u += w;
+    }
+    return out;
   }
-  function keycap(x, y, label, th, dim) {
-    var w = Math.max(24, tw(label, 12) + 14);
-    return '<g' + (dim ? ' opacity="0.35"' : '') + '><rect x="' + f(x - w / 2) + '" y="' + f(y - 11) + '" width="' + f(w) + '" height="22" rx="5" fill="' + th.panel +
-           '" stroke="' + th.border + '" stroke-opacity="0.8"/>' + T(x, y, label, 12, th.muted) + '</g>';
-  }
-  function rule(x, y, half, th) {
-    return '<line x1="' + f(x - half) + '" y1="' + f(y) + '" x2="' + f(x + half) + '" y2="' + f(y) + '" stroke="' + th.border + '" stroke-opacity="0.6"/>' +
-           diamond(x, y, 3, th.accent, 0.8);
+  // Same two-line wrapping as the DOM wedge label (dy -7 / +14).
+  function labelSvg(text, x, y, maxU, cls) {
+    text = String(text || '');
+    var head = '<text class="' + cls + '" x="' + f(x) + '" y="' + f(y) + '">';
+    if (units(text) <= maxU) return head + esc(text) + '</text>';
+    var words = text.split(/\s+/), l1 = '', l2 = '', i = 0;
+    while (i < words.length) {
+      var trial = l1 ? l1 + ' ' + words[i] : words[i];
+      if (units(trial) > maxU && l1) break;
+      l1 = trial; i++;
+    }
+    if (units(l1) > maxU) { l1 = cut(l1, maxU); i = words.length; }
+    if (i < words.length) {
+      l2 = words.slice(i).join(' ');
+      if (units(l2) > maxU) l2 = cut(l2, maxU);
+    }
+    var out = head + '<tspan x="' + f(x) + '" dy="' + (l2 ? '-7' : '0') + '">' + esc(l1) + '</tspan>';
+    if (l2) out += '<tspan x="' + f(x) + '" dy="14">' + esc(l2) + '</tspan>';
+    return out + '</text>';
   }
 
-  // ------------------------------------------------------------------ icons (line art in a +-14 box)
+  // Line icons drawn in a +-14 box; scaled to the DOM icon size (26px).
   var ICONS = {
     sword: '<path d="M-4 4 L11 -11 M-9 -1 L1 9 M-6.5 6.5 L-11 11"/>',
     dagger: '<path d="M-2 2 L9 -9 M-6 -2 L2 6 M-4 4 L-9 9"/>',
@@ -128,222 +146,106 @@ body { font-family: "Malgun Gothic", "Segoe UI", "Microsoft YaHei", "Noto Sans C
     back: '<path d="M8 -8 L-6 0 L8 8"/>',
     other: '<rect x="-8" y="-8" width="16" height="16" rx="3"/><path d="M0 -4 L4 0 L0 4 L-4 0 Z"/>'
   };
-  function icon(name, x, y, sc, color) {
-    var body = ICONS[name] || ICONS.other;
-    return '<g transform="translate(' + f(x) + ',' + f(y) + ') scale(' + f(sc) + ')" fill="none" stroke="' + color +
-           '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</g>';
+  function icon(name, x, y, cls, grow) {
+    var sc = (26 / 28) * (grow ? 1.12 : 1);
+    return '<g class="icon ' + cls + '" transform="translate(' + f(x) + ' ' + f(y) + ') scale(' + f(sc) + ')">' +
+           (ICONS[name] || ICONS.other) + '</g>';
   }
 
-  // ------------------------------------------------------------------ drawing
-  function ribbonSvg(s, th) {
-    var y = -307;
-    var out = '';
-    var caps = {}, size = {}, half = {}, pos = {};
-    var i, r;
-    for (i = 0; i < s.ribbon.length; i++) {
-      r = s.ribbon[i];
-      var sel = r.o === 0;
-      size[r.o] = sel ? 25 * (th.titleScale || 1) : 16;
-      var maxw = sel ? 154 : (Math.abs(r.o) === 1 ? 82 : 64);
-      var cap = fit(r.n, size[r.o], maxw);
-      if (sel) cap = '< ' + cap + ' >';
-      caps[r.o] = cap;
-      half[r.o] = tw(cap, size[r.o]) / 2;
+  function categoryRow(s) {
+    var cur = null, left = null, right = null;
+    for (var i = 0; i < s.ribbon.length; i++) {
+      var r = s.ribbon[i];
+      if (r.o === 0) cur = r; else if (r.o === -1) left = r; else if (r.o === 1) right = r;
     }
-    if (caps[0] === undefined) return out;
-    pos[0] = 0;
-    var edge = half[0];
-    var dirs = [-1, 1];
-    for (var d = 0; d < dirs.length; d++) {
-      var prev = half[0];
-      for (var dist = 1; dist <= 2; dist++) {
-        var o = dirs[d] * dist;
-        if (caps[o] === undefined) continue;
-        var off = prev + 9.2 + half[o];
-        pos[o] = dirs[d] * off;
-        prev = off + half[o];
-      }
-      edge = Math.max(edge, prev);
-    }
-    for (i = 0; i < s.ribbon.length; i++) {
-      r = s.ribbon[i];
-      var selected = r.o === 0;
-      out += T(pos[r.o], y, caps[r.o], size[r.o], selected ? th.text : th.muted, selected ? ' font-weight="bold"' : '');
-    }
-    if (s.cfg.hints && s.ribbon.length > 1) {
-      var keyOff = edge + 22;
-      out += keycap(-keyOff, y, s.gamepad ? s.padPair : 'A', th, false);
-      out += keycap(keyOff, y, s.gamepad ? s.padPairR : 'D', th, false);
-    }
+    if (!cur) return '';
+    var y = -226;
+    var out = '<text class="cat-cur" x="' + CX_TXT + '" y="' + y + '">' + esc(cur.n) + '</text>';
+    var half = units(cur.n) * 4.2 + 26;
+    if (left) out += '<text class="cat-side" x="' + f(CX_TXT - half - units(left.n) * 3.2 - 8) + '" y="' + y + '">' + esc(left.n) + '</text>';
+    if (right) out += '<text class="cat-side" x="' + f(CX_TXT + half + units(right.n) * 3.2 + 8) + '" y="' + y + '">' + esc(right.n) + '</text>';
     return out;
   }
 
-  function pageRailSvg(s, th) {
-    var out = '';
-    var x = 302;
-    var n = s.pages.size;
-    var top = -(n - 1) * 17;
-    var bottom = top + (n - 1) * 34;
-    if (s.cfg.hints) {
-      out += keycap(x, top - 34, s.gamepad ? 'UP' : 'W', th, s.pages.total <= 1);
-      out += keycap(x, bottom + 34, s.gamepad ? 'DN' : 'S', th, s.pages.total <= 1);
-    }
-    for (var i = 0; i < n; i++) {
-      var y = top + i * 34;
-      var selected = (s.pages.first + i) === s.pages.cur;
-      if (i > 0) out += '<line x1="' + x + '" y1="' + f(y - 26) + '" x2="' + x + '" y2="' + f(y - 8) + '" stroke="' + th.border + '" stroke-opacity="0.5"/>';
-      if (selected) {
-        out += diamond(x, y, 7, th.accent);
-        out += '<path d="M' + (x - 16) + ' ' + f(y - 3) + ' L' + (x - 13) + ' ' + f(y) + ' L' + (x - 16) + ' ' + f(y + 3) + '" fill="none" stroke="' + th.accent + '"/>';
-        out += '<path d="M' + (x + 16) + ' ' + f(y - 3) + ' L' + (x + 13) + ' ' + f(y) + ' L' + (x + 16) + ' ' + f(y + 3) + '" fill="none" stroke="' + th.accent + '"/>';
-      } else {
-        out += diamond(x, y, 4, th.muted);
-      }
-    }
-    return out;
-  }
-
-  function slotsSvg(s, th) {
-    var out = '';
-    var step = TAU / SLOTS;
-    var fullHalf = step * 0.5 - 0.02;
+  function build(s) {
+    var n = s.items.length || 8;
+    var step = (BOT - TOP) / n;
+    var halfStep = step / 2 - GAP;
+    var maxU = Math.max(4, Math.min(14, Math.floor(step * (R_OUTER - 28) / 7)));
+    var body = '';
     var i;
-    for (i = 0; i < SLOTS; i++) {
+    for (i = 0; i < n; i++) {
       var item = s.items[i];
-      var occupied = !!item;
-      var hover = occupied && i === s.sel;
-      var a = i * step;
-      var begin = a - fullHalf, end = a + fullHalf;
-      out += '<path d="' + sectorPath(INNER, OUTER, begin, end) + '" fill="' + (occupied ? th.sector : th.empty) + '"/>';
-      if (hover) out += '<path d="' + sectorPath(INNER, OUTER, begin, end) + '" fill="' + th.hover + '" fill-opacity="0.6"/>';
-      out += '<path d="' + arcPath(OUTER - 1.5, begin + 0.008, end - 0.008) + '" fill="none" stroke="' + th.border + '" stroke-opacity="' + (occupied ? 0.65 : 0.23) + '" stroke-width="' + th.borderWidth + '"/>';
-      out += '<path d="' + arcPath(INNER + 1.5, begin + 0.008, end - 0.008) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.35"/>';
-      if (hover) {
-        out += '<path d="' + arcPath(OUTER - 3, begin + 0.018, end - 0.018) + '" fill="none" stroke="' + th.accent + '" stroke-width="2"/>';
-        out += '<path d="' + arcPath(INNER + 3, begin + 0.05, end - 0.05) + '" fill="none" stroke="' + th.accent + '" stroke-opacity="0.45"/>';
+      var a = TOP + (i + 0.5) * step;
+      var hover = !!item && i === s.sel;
+      var cls = 'wedge' + (!item ? ' empty' : (!item.us ? ' off' : '')) + (hover ? ' active' : '');
+      body += '<path class="' + cls + '" d="' + sector(R_INNER, R_OUTER, a - halfStep, a + halfStep) + '"/>';
+      if (!item) continue;
+      var muted = !item.us;
+      var lp = hp(R_OUTER - 28, a);
+      var ip = hp(R_INNER + 36, a);
+      body += icon(item.ic, ip[0], ip[1], (muted ? 'muted' : '') + (hover ? ' active' : ''), hover);
+      body += labelSvg(item.n, lp[0], lp[1], maxU, 'wedge-label' + (muted ? ' muted' : '') + (hover ? ' active' : ''));
+      if (item.eq) {
+        body += '<path d="' + arc(R_OUTER - 5, a - halfStep + 0.05, a + halfStep - 0.05) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
       }
-      var at = pt(189, a);
-      if (occupied) {
-        var ink = item.us ? (hover ? th.accent : th.text) : th.muted;
-        var lsz = 16 * (th.labelScale || 1);
-        out += icon(item.ic, at[0], at[1] - 19, 1.05, ink);
-        out += T(at[0], at[1] + 15, fit(item.n, lsz, 109), lsz, item.us ? th.text : th.muted);
-        if (item.st) out += T(at[0], at[1] + 36, fit(item.st, 12, 112), 12, item.eq ? th.accent : th.muted);
-        var qs = item.qs > 0;
-        if (item.eq) {
-          var d1 = pt(OUTER - 17, a + (qs ? 0.07 : 0));
-          out += diamond(d1[0], d1[1], 3, th.accent);
-        }
-        if (qs) {
-          var b = pt(OUTER - 18, a);
-          out += '<circle cx="' + f(b[0]) + '" cy="' + f(b[1]) + '" r="9" fill="' + th.panel + '" stroke="' + th.accent + '"/>';
-          out += T(b[0], b[1], String(item.qs), 12, th.accent);
-        }
-        if (!item.us) {
-          var m = pt(OUTER - 17, a - (qs ? 0.07 : 0));
-          out += '<line x1="' + f(m[0] - 3) + '" y1="' + f(m[1]) + '" x2="' + f(m[0] + 3) + '" y2="' + f(m[1]) + '" stroke="' + th.muted + '" stroke-width="1.5"/>';
-        }
-      } else {
-        out += diamond(at[0], at[1], 2, th.border, 0.35);
+      if (item.qs > 0) {
+        var bp = hp(R_INNER + 12, a);
+        body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
+                '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
       }
     }
-    return out;
-  }
+    body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
 
-  function centreSvg(s, th) {
-    var out = '';
-    out += '<circle r="' + (INNER - 9) + '" fill="' + th.panel + '"/>';
-    out += '<circle r="' + (INNER - 6) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.8" stroke-width="' + th.borderWidth + '"/>';
-    out += '<path d="' + arcPath(INNER - 10, -0.7, 0.7) + '" fill="none" stroke="' + th.accent + '" stroke-opacity="' + f(0.3 * th.ornament) + '"/>';
+    // text rows (not part of the DOM wheel, needed for categories / selection / pages)
+    body += categoryRow(s);
     var c = s.centre;
     if (c) {
-      out += icon(c.ic, 0, -44, 1.15, c.us ? th.accent : th.muted);
-      out += T(0, 4, fit(c.n, 20, 188), 20, th.text);
-      var lines = wrap(c.info, 14, 172, 2);
-      for (var i = 0; i < lines.length; i++) out += T(0, 38 + i * 17, lines[i], 14, c.eq ? th.accent : th.muted);
+      body += '<text class="info-name" x="' + CX_TXT + '" y="226">' + esc(cut(c.n, 40)) + '</text>';
+      body += '<text class="info-line" x="' + CX_TXT + '" y="248">' + esc(cut(c.info || '', 60)) + '</text>';
     } else {
-      out += diamond(0, -43, 7, th.accent, 0.75);
-      out += T(0, 0, fit(s.title, 20, 188), 20, th.text);
-      out += T(0, 34, fit(s.idle || '', 14, 185), 14, th.muted);
+      body += '<text class="info-line" x="' + CX_TXT + '" y="226">' + esc(cut(s.idle || '', 60)) + '</text>';
     }
-    return out;
-  }
-
-  function footerSvg(s, th) {
-    var out = rule(0, 283, 80, th);
-    out += T(0, 304, s.count, 16, th.accent);
+    var foot = s.count;
+    if (s.pages && s.pages.total > 1) foot += '  \u00B7  ' + (s.pages.cur + 1) + ' / ' + s.pages.total;
+    body += '<text class="info-dim" x="' + CX_TXT + '" y="272">' + esc(foot) + '</text>';
     if (s.cfg.hints && s.hints) {
-      var h = s.hints.length === 3 ? 68 : 48;
-      out += '<rect x="-282" y="328" width="564" height="' + h + '" rx="6" fill="' + th.panel + '" fill-opacity="0.85"/>';
-      out += '<line x1="-270" y1="328" x2="270" y2="328" stroke="' + th.border + '" stroke-opacity="0.45"/>';
-      out += T(0, 342, fit(s.hints[0], 14, 535), 14, th.muted);
-      out += T(0, 364, fit(s.hints[1], 12, 535), 12, th.muted);
-      if (s.hints.length === 3) out += T(0, 384, fit(s.hints[2], 12, 535), 12, th.muted);
+      for (i = 0; i < s.hints.length; i++) {
+        body += '<text class="info-dim" x="' + CX_TXT + '" y="' + (294 + i * 18) + '">' + esc(cut(s.hints[i], 80)) + '</text>';
+      }
     }
-    return out;
+    return body;
   }
 
   function render(s) {
-    var th = s.theme;
     var W = window.innerWidth || 1920;
     var H = window.innerHeight || 1080;
-    var cfg = s.cfg;
-    var sc, cx, cy;
-    if (s.panel) {
-      sc = Math.min(Math.min(W / 1280, H / 900) * cfg.scale, Math.min(W / 800, H / 830));
-      cx = W * 0.5; cy = H * 0.5;
-    } else {
-      sc = Math.min(Math.min(W / 1280, H / 900) * cfg.wheelScale * 0.82, Math.min(W / 810, H / 820));
-      cx = clamp(W * cfg.px / 100, 405 * sc, W - 405 * sc);
-      cy = clamp(H * cfg.py / 100, 410 * sc, H - 410 * sc);
-    }
-    var key = JSON.stringify([s.theme, s.cfg, s.panel, s.title, s.ribbon, s.pages, s.count, s.gamepad, s.items, s.centre, s.idle, s.hints, s.sel, s.message, W, H]);
-    var firstShow = lastKey === '';
+    var S = Math.min(0.92 * Math.min(W, H), 820);
+    var key = JSON.stringify([s.panel, s.message, s.title, s.ribbon, s.pages, s.count, s.items, s.centre, s.idle, s.hints, s.sel, s.cfg, W, H]);
     if (key !== lastKey) {
       lastKey = key;
-      var body = '';
+      var body;
       if (s.panel) {
-        var lines = wrap(s.message || '', 18, 520, 3);
-        body += '<rect x="-300" y="-70" width="600" height="140" rx="10" fill="' + th.panel + '" stroke="' + th.border + '"/>';
-        for (var i = 0; i < lines.length; i++) body += T(0, -22 + i * 28, lines[i], 18, th.text);
+        body = '<rect class="pill" x="-300" y="-40" width="600" height="80" rx="10"/>' +
+               '<text class="pill-text" x="0" y="0">' + esc(s.message || '') + '</text>';
       } else {
-        body += ribbonSvg(s, th);
-        body += rule(0, -283, 80, th);
-        body += pageRailSvg(s, th);
-        body += '<circle r="' + (OUTER + 8) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.8" stroke-width="' + th.borderWidth + '"/>';
-        body += '<circle r="' + (OUTER + 12) + '" fill="none" stroke="' + th.border + '" stroke-opacity="' + f(0.28 * th.ornament) + '"/>';
-        var step = TAU / SLOTS;
-        for (var t = 0; t < SLOTS * 3; t++) {
-          var a = t * step / 3;
-          var p0 = pt(OUTER + 8, a), p1 = pt(OUTER + (t % 3 === 0 ? 14 : 11), a);
-          body += '<line x1="' + f(p0[0]) + '" y1="' + f(p0[1]) + '" x2="' + f(p1[0]) + '" y2="' + f(p1[1]) + '" stroke="' + th.accent + '" stroke-opacity="' + f((t % 3 === 0 ? 0.65 : 0.25) * th.ornament) + '"/>';
-        }
-        body += slotsSvg(s, th);
-        body += centreSvg(s, th);
-        body += footerSvg(s, th);
+        body = build(s);
       }
-      var overlay = clamp(cfg.overlay, 0, 100) / 100;
-      var cls = (firstShow && cfg.anim) ? ' class="fw-fade"' : '';
-      root.innerHTML =
-        '<div id="dim"' + cls + ' style="background:rgba(0,0,0,' + overlay + ')"></div>' +
-        '<svg id="stage"' + cls + ' xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<g transform="translate(' + f(cx) + ',' + f(cy) + ') scale(' + f(sc) + ')">' + body +
-        '<g id="ptr"></g></g></svg>';
+      var vignette = (s.cfg.overlay > 0) ? '<div id="vignette"></div>' : '';
+      root.innerHTML = vignette +
+        '<div id="stage" style="left:' + f((W - S) / 2) + 'px;top:' + f((H - S) / 2) + 'px;width:' + f(S) + 'px;height:' + f(S) + 'px">' +
+        '<svg id="halfring" xmlns="http://www.w3.org/2000/svg" width="' + f(S) + '" height="' + f(S) + '" viewBox="-440 -440 880 880">' +
+        body + '<g id="ptr"></g></svg></div>';
     }
-    // pointer (every frame, cheap)
     var ptr = document.getElementById('ptr');
-    if (ptr) {
-      if (s.panel) {
-        var px = s.x * 224, py = s.y * 224;
-        ptr.innerHTML = '<path d="M' + f(px) + ' ' + f(py) + ' L' + f(px + 4) + ' ' + f(py + 17) + ' L' + f(px + 13) + ' ' + f(py + 12) + ' Z" fill="' + th.accent + '" stroke="rgba(0,0,0,0.9)"/>';
-      } else {
-        ptr.innerHTML = '<circle cx="' + f(s.x * 224) + '" cy="' + f(s.y * 224) + '" r="4" fill="' + th.accent + '"/>' +
-                        '<circle cx="' + f(s.x * 224) + '" cy="' + f(s.y * 224) + '" r="7" fill="none" stroke="rgba(0,0,0,0.82)" stroke-width="2"/>';
-      }
+    if (ptr && !s.panel) {
+      var px = H_CX + s.x * R_OUTER, py = s.y * R_OUTER;
+      ptr.innerHTML = '<circle cx="' + f(px) + '" cy="' + f(py) + '" r="4" fill="#e8932a"/>' +
+                      '<circle cx="' + f(px) + '" cy="' + f(py) + '" r="7" fill="none" stroke="rgba(0,0,0,0.82)" stroke-width="2"/>';
     }
   }
 
-  // ------------------------------------------------------------------ entry point called by the SKSE plugin
+  // Entry point called by the SKSE plugin (Wheel state as JSON).
   window.fwUpdate = function (json) {
     var s;
     try { s = JSON.parse(json); } catch (e) { return; }
