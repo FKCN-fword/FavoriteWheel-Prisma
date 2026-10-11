@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FavoriteWheel</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+body { font-family: "Malgun Gothic", "Segoe UI", "Microsoft YaHei", "Noto Sans CJK KR", sans-serif; }
+#root { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+#dim { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+#stage { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.fw-fade { animation: fwfade 0.14s ease-out; }
+@keyframes fwfade { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  'use strict';
+
+  var root = document.getElementById('root');
+  var lastKey = '';
+  var lastState = null;
+  var TAU = Math.PI * 2;
+  var SLOTS = 10;
+  var INNER = 116;
+  var OUTER = 264;
+
+  // ------------------------------------------------------------------ helpers
+  function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function f(n) { return Math.round(n * 100) / 100; }
+  function tw(str, size) {
+    var w = 0;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c >= 0x2E80) w += size;
+      else if (c >= 0x41 && c <= 0x5A) w += size * 0.66;
+      else w += size * 0.54;
+    }
+    return w;
+  }
+  function fit(str, size, maxw) {
+    str = String(str);
+    if (tw(str, size) <= maxw) return str;
+    var out = str;
+    while (out.length > 1 && tw(out + '\u2026', size) > maxw) out = out.slice(0, -1);
+    return out + '\u2026';
+  }
+  function wrap(str, size, maxw, maxLines) {
+    str = String(str);
+    var lines = [];
+    var cur = '';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i);
+      if (ch === '\n') { lines.push(cur); cur = ''; continue; }
+      if (tw(cur + ch, size) > maxw && cur.length) {
+        lines.push(cur);
+        cur = ch === ' ' ? '' : ch;
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur.length) lines.push(cur);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      lines[maxLines - 1] = fit(lines[maxLines - 1] + '\u2026\u2026', size, maxw);
+    }
+    return lines;
+  }
+  function pt(r, a) { return [Math.sin(a) * r, -Math.cos(a) * r]; }
+  function P(p) { return f(p[0]) + ' ' + f(p[1]); }
+
+  function arcPath(r, a0, a1) {
+    var p0 = pt(r, a0), p1 = pt(r, a1);
+    var large = (a1 - a0) > Math.PI ? 1 : 0;
+    return 'M' + P(p0) + ' A' + f(r) + ' ' + f(r) + ' 0 ' + large + ' 1 ' + P(p1);
+  }
+  function sectorPath(ri, ro, a0, a1) {
+    var o0 = pt(ro, a0), o1 = pt(ro, a1), i1 = pt(ri, a1), i0 = pt(ri, a0);
+    var large = (a1 - a0) > Math.PI ? 1 : 0;
+    return 'M' + P(o0) + ' A' + ro + ' ' + ro + ' 0 ' + large + ' 1 ' + P(o1) +
+           ' L' + P(i1) + ' A' + ri + ' ' + ri + ' 0 ' + large + ' 0 ' + P(i0) + ' Z';
+  }
+
+  // text with the baseline shifted so that y is the visual centre
+  function T(x, y, str, size, fill, extra) {
+    return '<text x="' + f(x) + '" y="' + f(y + size * 0.35) + '" font-size="' + f(size) + '" text-anchor="middle" fill="' + fill + '"' +
+           (extra || '') + '>' + esc(str) + '</text>';
+  }
+  function diamond(x, y, r, fill, opacity) {
+    return '<path d="M' + f(x) + ' ' + f(y - r) + ' L' + f(x + r) + ' ' + f(y) + ' L' + f(x) + ' ' + f(y + r) + ' L' + f(x - r) + ' ' + f(y) +
+           ' Z" fill="' + fill + '"' + (opacity != null ? ' fill-opacity="' + opacity + '"' : '') + '/>';
+  }
+  function keycap(x, y, label, th, dim) {
+    var w = Math.max(24, tw(label, 12) + 14);
+    return '<g' + (dim ? ' opacity="0.35"' : '') + '><rect x="' + f(x - w / 2) + '" y="' + f(y - 11) + '" width="' + f(w) + '" height="22" rx="5" fill="' + th.panel +
+           '" stroke="' + th.border + '" stroke-opacity="0.8"/>' + T(x, y, label, 12, th.muted) + '</g>';
+  }
+  function rule(x, y, half, th) {
+    return '<line x1="' + f(x - half) + '" y1="' + f(y) + '" x2="' + f(x + half) + '" y2="' + f(y) + '" stroke="' + th.border + '" stroke-opacity="0.6"/>' +
+           diamond(x, y, 3, th.accent, 0.8);
+  }
+
+  // ------------------------------------------------------------------ icons (line art in a +-14 box)
+  var ICONS = {
+    sword: '<path d="M-4 4 L11 -11 M-9 -1 L1 9 M-6.5 6.5 L-11 11"/>',
+    dagger: '<path d="M-2 2 L9 -9 M-6 -2 L2 6 M-4 4 L-9 9"/>',
+    axe: '<path d="M-9 11 L8 -8 M2 -12 Q13 -8 9 3 L3 -3 Z"/>',
+    mace: '<path d="M-9 11 L1 1"/><circle cx="5" cy="-5" r="6"/>',
+    bow: '<path d="M-5 -12 Q11 0 -5 12 Z M-10 0 L9 0"/>',
+    staff: '<path d="M-9 12 L7 -6"/><circle cx="9" cy="-9" r="3.5"/>',
+    arrow: '<path d="M-11 11 L9 -9 M9 -9 L3 -9 M9 -9 L9 -3 M-11 11 L-11 6 M-11 11 L-6 11"/>',
+    armor: '<path d="M-10 -8 L-4 -11 L4 -11 L10 -8 L7 -2 L7 10 L-7 10 L-7 -2 Z"/>',
+    helmet: '<path d="M-9 6 L-9 -2 Q-9 -10 0 -10 Q9 -10 9 -2 L9 6 L4 6 L4 1 L-4 1 L-4 6 Z"/>',
+    shield: '<path d="M-8 -9 L8 -9 L8 1 Q8 8 0 12 Q-8 8 -8 1 Z"/>',
+    ring: '<circle cx="0" cy="3" r="7"/><path d="M-3 -6 L0 -11 L3 -6 Z"/>',
+    amulet: '<path d="M-8 -10 Q0 4 8 -10"/><circle cx="0" cy="6" r="5"/>',
+    potion: '<path d="M-3 -11 L3 -11 M-2 -11 L-2 -4 L-8 6 Q-9 11 -4 11 L4 11 Q9 11 8 6 L2 -4 L2 -11 M-6 4 L6 4"/>',
+    food: '<circle cx="0" cy="3" r="8"/><path d="M0 -5 Q0 -9 4 -11"/>',
+    magic: '<path d="M0 -12 L3 -3 L12 0 L3 3 L0 12 L-3 3 L-12 0 L-3 -3 Z"/>',
+    scroll: '<path d="M-8 -9 L8 -9 L8 9 L-8 9 Z M-4 -4 L4 -4 M-4 0 L4 0 M-4 4 L2 4"/>',
+    torch: '<path d="M-2 12 L-2 0 L2 0 L2 12 M-5 0 Q0 -14 5 0 Z"/>',
+    shout: '<path d="M-6 -8 Q0 0 -6 8 M-1 -10 Q7 0 -1 10 M4 -12 Q13 0 4 12"/>',
+    back: '<path d="M8 -8 L-6 0 L8 8"/>',
+    other: '<rect x="-8" y="-8" width="16" height="16" rx="3"/><path d="M0 -4 L4 0 L0 4 L-4 0 Z"/>'
+  };
+  function icon(name, x, y, sc, color) {
+    var body = ICONS[name] || ICONS.other;
+    return '<g transform="translate(' + f(x) + ',' + f(y) + ') scale(' + f(sc) + ')" fill="none" stroke="' + color +
+           '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</g>';
+  }
+
+  // ------------------------------------------------------------------ drawing
+  function ribbonSvg(s, th) {
+    var y = -307;
+    var out = '';
+    var caps = {}, size = {}, half = {}, pos = {};
+    var i, r;
+    for (i = 0; i < s.ribbon.length; i++) {
+      r = s.ribbon[i];
+      var sel = r.o === 0;
+      size[r.o] = sel ? 25 * (th.titleScale || 1) : 16;
+      var maxw = sel ? 154 : (Math.abs(r.o) === 1 ? 82 : 64);
+      var cap = fit(r.n, size[r.o], maxw);
+      if (sel) cap = '< ' + cap + ' >';
+      caps[r.o] = cap;
+      half[r.o] = tw(cap, size[r.o]) / 2;
+    }
+    if (caps[0] === undefined) return out;
+    pos[0] = 0;
+    var edge = half[0];
+    var dirs = [-1, 1];
+    for (var d = 0; d < dirs.length; d++) {
+      var prev = half[0];
+      for (var dist = 1; dist <= 2; dist++) {
+        var o = dirs[d] * dist;
+        if (caps[o] === undefined) continue;
+        var off = prev + 9.2 + half[o];
+        pos[o] = dirs[d] * off;
+        prev = off + half[o];
+      }
+      edge = Math.max(edge, prev);
+    }
+    for (i = 0; i < s.ribbon.length; i++) {
+      r = s.ribbon[i];
+      var selected = r.o === 0;
+      out += T(pos[r.o], y, caps[r.o], size[r.o], selected ? th.text : th.muted, selected ? ' font-weight="bold"' : '');
+    }
+    if (s.cfg.hints && s.ribbon.length > 1) {
+      var keyOff = edge + 22;
+      out += keycap(-keyOff, y, s.gamepad ? s.padPair : 'A', th, false);
+      out += keycap(keyOff, y, s.gamepad ? s.padPairR : 'D', th, false);
+    }
+    return out;
+  }
+
+  function pageRailSvg(s, th) {
+    var out = '';
+    var x = 302;
+    var n = s.pages.size;
+    var top = -(n - 1) * 17;
+    var bottom = top + (n - 1) * 34;
+    if (s.cfg.hints) {
+      out += keycap(x, top - 34, s.gamepad ? 'UP' : 'W', th, s.pages.total <= 1);
+      out += keycap(x, bottom + 34, s.gamepad ? 'DN' : 'S', th, s.pages.total <= 1);
+    }
+    for (var i = 0; i < n; i++) {
+      var y = top + i * 34;
+      var selected = (s.pages.first + i) === s.pages.cur;
+      if (i > 0) out += '<line x1="' + x + '" y1="' + f(y - 26) + '" x2="' + x + '" y2="' + f(y - 8) + '" stroke="' + th.border + '" stroke-opacity="0.5"/>';
+      if (selected) {
+        out += diamond(x, y, 7, th.accent);
+        out += '<path d="M' + (x - 16) + ' ' + f(y - 3) + ' L' + (x - 13) + ' ' + f(y) + ' L' + (x - 16) + ' ' + f(y + 3) + '" fill="none" stroke="' + th.accent + '"/>';
+        out += '<path d="M' + (x + 16) + ' ' + f(y - 3) + ' L' + (x + 13) + ' ' + f(y) + ' L' + (x + 16) + ' ' + f(y + 3) + '" fill="none" stroke="' + th.accent + '"/>';
+      } else {
+        out += diamond(x, y, 4, th.muted);
+      }
+    }
+    return out;
+  }
+
+  function slotsSvg(s, th) {
+    var out = '';
+    var step = TAU / SLOTS;
+    var fullHalf = step * 0.5 - 0.02;
+    var i;
+    for (i = 0; i < SLOTS; i++) {
+      var item = s.items[i];
+      var occupied = !!item;
+      var hover = occupied && i === s.sel;
+      var a = i * step;
+      var begin = a - fullHalf, end = a + fullHalf;
+      out += '<path d="' + sectorPath(INNER, OUTER, begin, end) + '" fill="' + (occupied ? th.sector : th.empty) + '"/>';
+      if (hover) out += '<path d="' + sectorPath(INNER, OUTER, begin, end) + '" fill="' + th.hover + '" fill-opacity="0.6"/>';
+      out += '<path d="' + arcPath(OUTER - 1.5, begin + 0.008, end - 0.008) + '" fill="none" stroke="' + th.border + '" stroke-opacity="' + (occupied ? 0.65 : 0.23) + '" stroke-width="' + th.borderWidth + '"/>';
+      out += '<path d="' + arcPath(INNER + 1.5, begin + 0.008, end - 0.008) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.35"/>';
+      if (hover) {
+        out += '<path d="' + arcPath(OUTER - 3, begin + 0.018, end - 0.018) + '" fill="none" stroke="' + th.accent + '" stroke-width="2"/>';
+        out += '<path d="' + arcPath(INNER + 3, begin + 0.05, end - 0.05) + '" fill="none" stroke="' + th.accent + '" stroke-opacity="0.45"/>';
+      }
+      var at = pt(189, a);
+      if (occupied) {
+        var ink = item.us ? (hover ? th.accent : th.text) : th.muted;
+        var lsz = 16 * (th.labelScale || 1);
+        out += icon(item.ic, at[0], at[1] - 19, 1.05, ink);
+        out += T(at[0], at[1] + 15, fit(item.n, lsz, 109), lsz, item.us ? th.text : th.muted);
+        if (item.st) out += T(at[0], at[1] + 36, fit(item.st, 12, 112), 12, item.eq ? th.accent : th.muted);
+        var qs = item.qs > 0;
+        if (item.eq) {
+          var d1 = pt(OUTER - 17, a + (qs ? 0.07 : 0));
+          out += diamond(d1[0], d1[1], 3, th.accent);
+        }
+        if (qs) {
+          var b = pt(OUTER - 18, a);
+          out += '<circle cx="' + f(b[0]) + '" cy="' + f(b[1]) + '" r="9" fill="' + th.panel + '" stroke="' + th.accent + '"/>';
+          out += T(b[0], b[1], String(item.qs), 12, th.accent);
+        }
+        if (!item.us) {
+          var m = pt(OUTER - 17, a - (qs ? 0.07 : 0));
+          out += '<line x1="' + f(m[0] - 3) + '" y1="' + f(m[1]) + '" x2="' + f(m[0] + 3) + '" y2="' + f(m[1]) + '" stroke="' + th.muted + '" stroke-width="1.5"/>';
+        }
+      } else {
+        out += diamond(at[0], at[1], 2, th.border, 0.35);
+      }
+    }
+    return out;
+  }
+
+  function centreSvg(s, th) {
+    var out = '';
+    out += '<circle r="' + (INNER - 9) + '" fill="' + th.panel + '"/>';
+    out += '<circle r="' + (INNER - 6) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.8" stroke-width="' + th.borderWidth + '"/>';
+    out += '<path d="' + arcPath(INNER - 10, -0.7, 0.7) + '" fill="none" stroke="' + th.accent + '" stroke-opacity="' + f(0.3 * th.ornament) + '"/>';
+    var c = s.centre;
+    if (c) {
+      out += icon(c.ic, 0, -44, 1.15, c.us ? th.accent : th.muted);
+      out += T(0, 4, fit(c.n, 20, 188), 20, th.text);
+      var lines = wrap(c.info, 14, 172, 2);
+      for (var i = 0; i < lines.length; i++) out += T(0, 38 + i * 17, lines[i], 14, c.eq ? th.accent : th.muted);
+    } else {
+      out += diamond(0, -43, 7, th.accent, 0.75);
+      out += T(0, 0, fit(s.title, 20, 188), 20, th.text);
+      out += T(0, 34, fit(s.idle || '', 14, 185), 14, th.muted);
+    }
+    return out;
+  }
+
+  function footerSvg(s, th) {
+    var out = rule(0, 283, 80, th);
+    out += T(0, 304, s.count, 16, th.accent);
+    if (s.cfg.hints && s.hints) {
+      var h = s.hints.length === 3 ? 68 : 48;
+      out += '<rect x="-282" y="328" width="564" height="' + h + '" rx="6" fill="' + th.panel + '" fill-opacity="0.85"/>';
+      out += '<line x1="-270" y1="328" x2="270" y2="328" stroke="' + th.border + '" stroke-opacity="0.45"/>';
+      out += T(0, 342, fit(s.hints[0], 14, 535), 14, th.muted);
+      out += T(0, 364, fit(s.hints[1], 12, 535), 12, th.muted);
+      if (s.hints.length === 3) out += T(0, 384, fit(s.hints[2], 12, 535), 12, th.muted);
+    }
+    return out;
+  }
+
+  function render(s) {
+    var th = s.theme;
+    var W = window.innerWidth || 1920;
+    var H = window.innerHeight || 1080;
+    var cfg = s.cfg;
+    var sc, cx, cy;
+    if (s.panel) {
+      sc = Math.min(Math.min(W / 1280, H / 900) * cfg.scale, Math.min(W / 800, H / 830));
+      cx = W * 0.5; cy = H * 0.5;
+    } else {
+      sc = Math.min(Math.min(W / 1280, H / 900) * cfg.wheelScale * 0.82, Math.min(W / 810, H / 820));
+      cx = clamp(W * cfg.px / 100, 405 * sc, W - 405 * sc);
+      cy = clamp(H * cfg.py / 100, 410 * sc, H - 410 * sc);
+    }
+    var key = JSON.stringify([s.theme, s.cfg, s.panel, s.title, s.ribbon, s.pages, s.count, s.gamepad, s.items, s.centre, s.idle, s.hints, s.sel, s.message, W, H]);
+    var firstShow = lastKey === '';
+    if (key !== lastKey) {
+      lastKey = key;
+      var body = '';
+      if (s.panel) {
+        var lines = wrap(s.message || '', 18, 520, 3);
+        body += '<rect x="-300" y="-70" width="600" height="140" rx="10" fill="' + th.panel + '" stroke="' + th.border + '"/>';
+        for (var i = 0; i < lines.length; i++) body += T(0, -22 + i * 28, lines[i], 18, th.text);
+      } else {
+        body += ribbonSvg(s, th);
+        body += rule(0, -283, 80, th);
+        body += pageRailSvg(s, th);
+        body += '<circle r="' + (OUTER + 8) + '" fill="none" stroke="' + th.border + '" stroke-opacity="0.8" stroke-width="' + th.borderWidth + '"/>';
+        body += '<circle r="' + (OUTER + 12) + '" fill="none" stroke="' + th.border + '" stroke-opacity="' + f(0.28 * th.ornament) + '"/>';
+        var step = TAU / SLOTS;
+        for (var t = 0; t < SLOTS * 3; t++) {
+          var a = t * step / 3;
+          var p0 = pt(OUTER + 8, a), p1 = pt(OUTER + (t % 3 === 0 ? 14 : 11), a);
+          body += '<line x1="' + f(p0[0]) + '" y1="' + f(p0[1]) + '" x2="' + f(p1[0]) + '" y2="' + f(p1[1]) + '" stroke="' + th.accent + '" stroke-opacity="' + f((t % 3 === 0 ? 0.65 : 0.25) * th.ornament) + '"/>';
+        }
+        body += slotsSvg(s, th);
+        body += centreSvg(s, th);
+        body += footerSvg(s, th);
+      }
+      var overlay = clamp(cfg.overlay, 0, 100) / 100;
+      var cls = (firstShow && cfg.anim) ? ' class="fw-fade"' : '';
+      root.innerHTML =
+        '<div id="dim"' + cls + ' style="background:rgba(0,0,0,' + overlay + ')"></div>' +
+        '<svg id="stage"' + cls + ' xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+        '<g transform="translate(' + f(cx) + ',' + f(cy) + ') scale(' + f(sc) + ')">' + body +
+        '<g id="ptr"></g></g></svg>';
+    }
+    // pointer (every frame, cheap)
+    var ptr = document.getElementById('ptr');
+    if (ptr) {
+      if (s.panel) {
+        var px = s.x * 224, py = s.y * 224;
+        ptr.innerHTML = '<path d="M' + f(px) + ' ' + f(py) + ' L' + f(px + 4) + ' ' + f(py + 17) + ' L' + f(px + 13) + ' ' + f(py + 12) + ' Z" fill="' + th.accent + '" stroke="rgba(0,0,0,0.9)"/>';
+      } else {
+        ptr.innerHTML = '<circle cx="' + f(s.x * 224) + '" cy="' + f(s.y * 224) + '" r="4" fill="' + th.accent + '"/>' +
+                        '<circle cx="' + f(s.x * 224) + '" cy="' + f(s.y * 224) + '" r="7" fill="none" stroke="rgba(0,0,0,0.82)" stroke-width="2"/>';
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ entry point called by the SKSE plugin
+  window.fwUpdate = function (json) {
+    var s;
+    try { s = JSON.parse(json); } catch (e) { return; }
+    if (!s || !s.open) {
+      lastKey = '';
+      lastState = null;
+      root.innerHTML = '';
+      return;
+    }
+    lastState = s;
+    try { render(s); } catch (e) { root.innerHTML = ''; lastKey = ''; }
+  };
+
+  window.addEventListener('resize', function () {
+    if (lastState) { lastKey = ''; try { render(lastState); } catch (e) {} }
+  });
+})();
+</script>
+</body>
+</html>

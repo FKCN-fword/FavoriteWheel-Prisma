@@ -1,0 +1,22 @@
+set_project("FavoriteWheel")
+set_version("0.5.3")
+set_languages("cxx23")
+set_encodings("utf-8")
+set_config("skyrim_se", true)
+set_config("skyrim_ae", true)
+set_config("skyrim_vr", false)
+set_config("tests", false)
+add_rules("mode.debug", "mode.release", "mode.releasedbg")
+includes("extern/CommonLibVR")
+
+-- PrismaUI display build: the ImGui renderer is replaced by src/PrismaView.cpp,
+-- so there is no ImGui target and no D3D11 drawing code any more.
+target("FavoriteWheel")
+    set_kind("shared")
+    add_rules("commonlibsse-ng.plugin", {name = "FavoriteWheel", author = "BlackMesa79 (PrismaUI display port)", description = "Categorized vanilla favorites wheel, PrismaUI display"})
+    add_deps("commonlibsse-ng")
+    add_files("src/*.cpp")
+    add_includedirs("include", "external")
+    add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
+    set_pcxxheader("include/PCH.h")
+    add_syslinks("dxgi", "user32", "ole32")

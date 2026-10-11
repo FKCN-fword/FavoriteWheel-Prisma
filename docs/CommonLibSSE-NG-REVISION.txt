@@ -1,0 +1,7 @@
+CommonLibSSE-NG v11.0.0
+Repository: https://github.com/alandtse/CommonLibSSE-NG
+Commit: 94faaed0c60eddd8347767f2d4d29a97c93bde8c
+Vendored on: 2026-10-05 (Asia/Hong_Kong)
+Historical directory name: extern/CommonLibVR
+Source snapshot; no local upstream code patches. VR disabled in consumer build.
+GitHub source ZIP SHA256: 0F5B98D89BA0DC20A2596156E9A37D70E04FDD311ECDA2C6CD60773B93CD3ADA
