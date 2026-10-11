@@ -35,6 +35,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 .wedge.off { fill: var(--iron-off); }
 .wedge-label { fill: var(--text); font-family: var(--sans); font-size: 14px; font-weight: 600; text-anchor: middle;
   dominant-baseline: middle; letter-spacing: 0.015em; }
+.wedge-label.left { text-anchor: start; }
 .wedge-label.muted { fill: var(--text-dim); font-weight: 500; }
 .wedge-label.active { fill: var(--ember); }
 .icon { color: var(--text); }
@@ -45,6 +46,8 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 }
 .h-centerline { fill: none; stroke: var(--line); stroke-width: 1.4; stroke-linecap: round; opacity: 0.5; }
 .badge { fill: var(--iron-deep); stroke: var(--line-strong); stroke-width: 1; }
+.count { fill: var(--text-mute); font-family: var(--sans); font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+.count.active { fill: var(--ember); }
 .badge-n { fill: var(--ember); font-family: var(--sans); font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
 .title { fill: var(--ember); font-family: var(--sans); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.02em; }
 .info-name { fill: var(--text); font-family: var(--sans); font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
@@ -177,9 +180,14 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
         var a = TOP + (i + 0.5) * step;
         var active = i === gi;
         body += '<path class="wedge' + (active ? ' active' : '') + '" d="' + sector(R_INNER, R_OUTER, a - halfStep, a + halfStep) + '"/>';
-        var gl = hp(R_OUTER - 28, a), gp = hp(R_INNER + 36, a);
-        body += icon(g.ic, gp[0], gp[1], 26, active ? 'active' : '', active);
-        body += labelSvg(g.n, gl[0], gl[1], maxU, 'wedge-label' + (active ? ' active' : ''));
+        // icon on the left, one or two label lines to its right (e.g. potions above, food below)
+        var gc = hp(134, a);
+        var lines = (g.ls && g.ls.length) ? g.ls : [g.n];
+        body += icon(g.ic, gc[0] - 42, gc[1], 26, active ? 'active' : '', active);
+        for (var li = 0; li < lines.length; li++) {
+          var ly = gc[1] + (lines.length === 1 ? 0 : (li === 0 ? -9 : 9));
+          body += '<text class="wedge-label left' + (active ? ' active' : '') + '" x="' + f(gc[0] - 22) + '" y="' + f(ly) + '">' + esc(cut(lines[li], 12)) + '</text>';
+        }
       }
       body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
 
@@ -199,10 +207,18 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
         if (item.eq) {
           body += '<path d="' + arc(R_COUT - 5, ca - chalf + 0.04, ca + chalf - 0.04) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
         }
+        // stack size from the state text ("x5" or "x5 \u00B7 Equipped"); single items show nothing
+        var cm = /^x(\d+)/.exec(item.st || '');
+        var cnt = cm ? parseInt(cm[1], 10) : 0;
+        var hasCnt = cnt > 1;
         if (item.qs > 0) {
-          var bp = hp(213, ca);
+          var bp = hp(213, ca - (hasCnt ? 0.075 : 0));
           body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
                   '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
+        }
+        if (hasCnt) {
+          var cp = hp(213, ca + (item.qs > 0 ? 0.065 : 0));
+          body += '<text class="count' + (hover ? ' active' : '') + '" x="' + f(cp[0]) + '" y="' + f(cp[1]) + '">\u00D7' + (cnt > 999 ? '999+' : cnt) + '</text>';
         }
       }
     }

@@ -7,7 +7,9 @@
 #include "QuickSlots.h"
 #include "InventoryPolicy.h"
 #include "MagicCategories.h"
+#include <cctype>
 #include <chrono>
+#include <string>
 #include <unordered_map>
 #include <optional>
 
@@ -159,6 +161,80 @@ namespace Wheel {
         }
     }
 
+    namespace {
+        // Consumables that come in fill levels ("Waterskin 1/3", "Waterskin 2/3", ...) are separate forms.
+        // Merge the levels that are on the wheel into one tile that drinks the least-full one first.
+        struct Fraction { std::string base; int part=0; int whole=0; };
+        std::optional<Fraction> ParseFraction(const std::string& name) {
+            std::string s=name;
+            auto trim=[](std::string& v){ while(!v.empty() && (v.back()==' ' || v.back()=='\t'))v.pop_back(); };
+            trim(s);
+            if(!s.empty() && (s.back()==')' || s.back()==']')) { s.pop_back(); trim(s); }
+            const auto end=s.size();
+            auto at=end;
+            while(at>0 && std::isdigit(static_cast<unsigned char>(s[at-1])))--at;
+            if(at==end || end-at>3)return std::nullopt;
+            const int whole=std::stoi(s.substr(at,end-at));
+            auto slash=at;
+            while(slash>0 && s[slash-1]==' ')--slash;
+            if(slash==0 || s[slash-1]!='/')return std::nullopt;
+            --slash;
+            while(slash>0 && s[slash-1]==' ')--slash;
+            const auto numberEnd=slash;
+            auto numberAt=numberEnd;
+            while(numberAt>0 && std::isdigit(static_cast<unsigned char>(s[numberAt-1])))--numberAt;
+            if(numberAt==numberEnd || numberEnd-numberAt>3)return std::nullopt;
+            const int part=std::stoi(s.substr(numberAt,numberEnd-numberAt));
+            std::string base=s.substr(0,numberAt);
+            trim(base);
+            if(!base.empty() && (base.back()=='(' || base.back()=='['))base.pop_back();
+            trim(base);
+            if(base.empty() || whole<2 || part<1 || part>whole)return std::nullopt;
+            return Fraction{base,part,whole};
+        }
+        void MergeFractions(std::vector<Item>& items) {
+            struct Member { std::size_t index=0; int part=0; };
+            struct Group { std::string base; std::vector<Member> members; };
+            std::unordered_map<std::string,Group> groups;
+            for(std::size_t i=0;i<items.size();++i) {
+                const auto& item=items[i];
+                if(item.magic || (item.category!=Category::Potions && item.category!=Category::Food))continue;
+                const auto fraction=ParseFraction(item.name);
+                if(!fraction)continue;
+                auto& group=groups[std::to_string(static_cast<int>(item.category))+"|"+fraction->base+"|"+std::to_string(fraction->whole)];
+                group.base=fraction->base;
+                group.members.push_back({i,fraction->part});
+            }
+            std::vector<bool> removed(items.size(),false);
+            for(auto& [key,group]:groups) {
+                if(group.members.size()<2)continue;
+                std::sort(group.members.begin(),group.members.end(),[&](const Member& a,const Member& b){
+                    if(a.part!=b.part)return a.part<b.part;
+                    return items[a.index].key.form<items[b.index].key.form;
+                });
+                std::size_t first=group.members.front().index;
+                long long total=0;
+                int quickSlot=items[group.members.front().index].quickSlot;
+                for(const auto& member:group.members) {
+                    first=std::min(first,member.index);
+                    total+=static_cast<long long>(member.part)*std::max(1,items[member.index].count);
+                    if(quickSlot<0)quickSlot=items[member.index].quickSlot;
+                }
+                Item merged=items[group.members.front().index]; // least-full level: used first
+                merged.name=group.base;
+                merged.count=static_cast<int>(std::min<long long>(total,INT_MAX));
+                merged.quickSlot=quickSlot;
+                for(const auto& member:group.members)removed[member.index]=true;
+                items[first]=std::move(merged);
+                removed[first]=false;
+            }
+            std::vector<Item> kept;
+            kept.reserve(items.size());
+            for(std::size_t i=0;i<items.size();++i)if(!removed[i])kept.push_back(std::move(items[i]));
+            items=std::move(kept);
+        }
+    }
+
     static std::vector<Item> CollectDirectory(bool allInventory,bool includeInfo) {
         const auto started=std::chrono::steady_clock::now();
         std::vector<Item> result;
@@ -209,6 +285,7 @@ namespace Wheel {
                 if(includeInfo){if(spell)result.back().info=CaptureSpellInfo(spell,player);result.back().infoReady=true;}
             }
         }
+        MergeFractions(result);
         std::sort(result.begin(), result.end(), [allInventory](const Item& a, const Item& b) {
             if (a.category != b.category) return a.category < b.category;
             if(allInventory) {

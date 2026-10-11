@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <iterator>
 #include <string>
+#include <vector>
 
 namespace Wheel {
     namespace {
@@ -148,13 +149,19 @@ namespace Wheel {
         }
 
         // ---------------------------------------------------------------- snapshot -> JSON
-        // Group label and icon shown on the inner ring.
-        std::string GroupLabel(const Settings& cfg, Category category) {
+        // Group label (one or two lines) and icon shown on the inner ring.
+        std::vector<std::string> GroupLines(const Settings& cfg, Category category) {
             switch (GroupOf(category)) {
-            case 0: return Tr(cfg, "weapons") + " \xC2\xB7 " + Tr(cfg, "armor");
-            case 1: return Tr(cfg, "potions") + " \xC2\xB7 " + Tr(cfg, "food");
-            default: return Tr(cfg, "magic");
+            case 0: return {Tr(cfg, "weapons"), Tr(cfg, "armor")};
+            case 1: return {Tr(cfg, "potions"), Tr(cfg, "food")};
+            default: return {Tr(cfg, "magic")};
             }
+        }
+        std::string GroupLabel(const Settings& cfg, Category category) {
+            const auto lines = GroupLines(cfg, category);
+            std::string out;
+            for (const auto& line : lines) out += (out.empty() ? "" : " \xC2\xB7 ") + line;
+            return out;
         }
         const char* GroupIcon(Category category) {
             switch (GroupOf(category)) {
@@ -183,7 +190,10 @@ namespace Wheel {
             for (int i = 0; i < groups; ++i) {
                 const auto category = v.visibleCategories.At(i);
                 if (i) j += ",";
-                j += "{\"n\":" + Q(GroupLabel(cfg, category)) + ",\"ic\":" + Q(GroupIcon(category)) + "}";
+                j += "{\"n\":" + Q(GroupLabel(cfg, category)) + ",\"ls\":[";
+                const auto lines = GroupLines(cfg, category);
+                for (std::size_t k = 0; k < lines.size(); ++k) j += (k ? "," : "") + Q(lines[k]);
+                j += "],\"ic\":" + Q(GroupIcon(category)) + "}";
             }
             j += "]";
             j += ",\"title\":" + Q(groups > 0 ? GroupLabel(cfg, v.category) : tr("title"));
