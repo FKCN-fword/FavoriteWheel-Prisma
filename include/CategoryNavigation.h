@@ -4,7 +4,7 @@
 namespace Wheel {
     // A small value snapshot: navigation and rendering never scan the inventory.
     struct VisibleCategories {
-        std::uint32_t mask=(1u<<categoryCount)-1;
+        std::uint32_t mask=groupMask;
         bool Contains(Category category) const {return (mask&(1u<<static_cast<int>(category)))!=0;}
         int Count() const {
             int count=0;for(int i=0;i<categoryCount;++i)if(Contains(static_cast<Category>(i)))++count;

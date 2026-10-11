@@ -23,5 +23,4 @@ namespace Wheel {
     inline Rect MinusButton(int row){return {40,-173.f+row*31,34,28};}
     inline Rect PlusButton(int row){return {252,-173.f+row*31,34,28};}
     inline Rect ValueButton(int row){return {80,-173.f+row*31,166,28};}
-    inline int WheelSlot(float x,float y) {return x*x+y*y>(264.f/224)*(264.f/224)?-1:HitTest(x,y);}
 }

@@ -201,7 +201,7 @@ namespace Wheel {
             }
         }
         void PublishDirectory(std::vector<Item> items,bool scope,bool preserveSelection=false) { // viewMutex held
-            const int oldSlot=WheelSlot(view.x,view.y),oldIndex=PageItemIndex(view,oldSlot);
+            const int oldSlot=WheelSlot(view),oldIndex=PageItemIndex(view,oldSlot);
             const auto oldKey=oldSlot>=0 && oldIndex>=0 && oldIndex<int(view.items.size())?
                 std::optional<ItemKey>{view.items[oldIndex].key}:std::optional<ItemKey>{};
             ++directoryRevision; // Invalidates details for the replaced catalog.
@@ -259,6 +259,7 @@ namespace Wheel {
             functionItems=std::move(entries);FilterItems();
         }
         void SwitchWheel() {
+            return; // Secondary wheel is disabled in the PrismaUI build.
             bool functions,needsDirectory=false;
             {std::lock_guard lock(viewMutex);
                 if(view.functions){if(view.functionSection==FaceLight::Section::Outfits)functionPage=view.page;}else favoritePage=view.page;
@@ -349,6 +350,17 @@ namespace Wheel {
             view.page = 0; // Keep the pointer on the same sector when changing type.
             FilterItems();
         }
+        void HoverGroup() { // viewMutex held; the inner ring chooses which group the outer ring shows.
+            if(view.functions || !inventoryLoaded || view.inventoryLoading)return;
+            const auto visible=CategoryVisibility(inventoryPages.visible,Config().hideEmptyCategories);
+            const int hit=GroupHit(view.x,view.y,visible.Count());
+            if(hit<0)return;
+            const auto category=visible.At(hit);
+            if(category==view.category)return;
+            view.category=category;
+            view.page=0;
+            FilterItems();
+        }
         void ChangePage(int direction,const char* source=nullptr) {
             std::lock_guard lock(viewMutex);
             const auto previous=view.page;
@@ -376,7 +388,7 @@ namespace Wheel {
             std::lock_guard lifecycle(lifecycleMutex);
             if(HasPendingAction() || retainedAction || Outfits::Busy())return;
             const auto current = Snapshot();
-            const int slot = WheelSlot(current.x, current.y);
+            const int slot = WheelSlot(current);
             const int index = PageItemIndex(current,slot);
             if(current.inventoryLoading && !current.functions)return;
             if (slot < 0 || index < 0 || index >= static_cast<int>(current.items.size())) {
@@ -411,7 +423,7 @@ namespace Wheel {
         }
         void BindQuickSlot(int slot) {
             const auto current=Snapshot();
-            const int radial=WheelSlot(current.x,current.y),index=PageItemIndex(current,radial);
+            const int radial=WheelSlot(current),index=PageItemIndex(current,radial);
             if(current.functions || current.settingsOpen || current.outfitDialog || radial<0 || index<0 ||
                 index>=static_cast<int>(current.items.size()) || current.inventoryLoading || !ValidQuickSlot(slot))return;
             const auto selected=current.items[index];
@@ -436,7 +448,7 @@ namespace Wheel {
             const auto serial=openSerial.load();
             if(hoverSerial!=serial){hoverSerial=serial;hoverKey.reset();}
             const auto current=Snapshot();
-            const int radial=WheelSlot(current.x,current.y),index=PageItemIndex(current,radial);
+            const int radial=WheelSlot(current),index=PageItemIndex(current,radial);
             if(!current.open || current.functions || current.settingsOpen || current.outfitDialog || current.inventoryLoading ||
                 radial<0 || index<0 || index>=static_cast<int>(current.items.size())){hoverKey.reset();return;}
             const auto& item=current.items[index];
@@ -453,7 +465,7 @@ namespace Wheel {
                 if(auto tasks=SKSE::GetTaskInterface())tasks->AddTask([selected=item,catalogIndex,generation,serial,revision,failed] {
                     RunQueuedTask(detailTaskQueued,[&] {
                         auto stillSelected=[&] {
-                            const auto v=Snapshot();const int slot=WheelSlot(v.x,v.y),i=PageItemIndex(v,slot);
+                            const auto v=Snapshot();const int slot=WheelSlot(v),i=PageItemIndex(v,slot);
                             return generation==epoch.load() && serial==openSerial.load() && revision==directoryRevision.load() &&
                                 v.open && !v.functions && !v.settingsOpen && !v.outfitDialog && slot>=0 &&
                                 i>=0 && i<static_cast<int>(v.items.size()) && v.items[i].key==selected.key;
@@ -982,6 +994,7 @@ namespace Wheel {
                         } else {
                             MovePointer(view.x,view.y,mouse->mouseInputX*config.sensitivity/250.f,
                                 mouse->mouseInputY*config.sensitivity/250.f);
+                            HoverGroup();
                         }
                     }
                     mouse->mouseInputX = mouse->mouseInputY = 0;

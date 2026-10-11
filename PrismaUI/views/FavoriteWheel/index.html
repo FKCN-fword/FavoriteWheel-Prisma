@@ -33,7 +33,6 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 .wedge { fill: var(--iron); stroke: var(--line); stroke-width: 1; }
 .wedge.active { fill: var(--iron-active); stroke: var(--line-strong); stroke-width: 1.5; }
 .wedge.off { fill: var(--iron-off); }
-.wedge.empty { fill: var(--iron-off); opacity: 0.45; }
 .wedge-label { fill: var(--text); font-family: var(--sans); font-size: 14px; font-weight: 600; text-anchor: middle;
   dominant-baseline: middle; letter-spacing: 0.015em; }
 .wedge-label.muted { fill: var(--text-dim); font-weight: 500; }
@@ -47,8 +46,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 .h-centerline { fill: none; stroke: var(--line); stroke-width: 1.4; stroke-linecap: round; opacity: 0.5; }
 .badge { fill: var(--iron-deep); stroke: var(--line-strong); stroke-width: 1; }
 .badge-n { fill: var(--ember); font-family: var(--sans); font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
-.cat-cur { fill: var(--ember); font-family: var(--sans); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.02em; }
-.cat-side { fill: var(--text-dim); font-family: var(--sans); font-size: 13px; font-weight: 500; text-anchor: middle; dominant-baseline: middle; }
+.title { fill: var(--ember); font-family: var(--sans); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.02em; }
 .info-name { fill: var(--text); font-family: var(--sans); font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
 .info-line { fill: var(--text-mute); font-family: var(--sans); font-size: 13px; text-anchor: middle; dominant-baseline: middle; }
 .info-dim { fill: var(--text-dim); font-family: var(--sans); font-size: 12px; text-anchor: middle; dominant-baseline: middle; }
@@ -67,9 +65,11 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
   var lastState = null;
 
   // DOM half-ring constants (design units, viewBox -440..440)
-  var R_INNER = 88, R_OUTER = 190, H_CX = 12, GAP = 0.012;
+  var R_INNER = 88, R_OUTER = 190, R_CIN = 202, R_COUT = 282, H_CX = 12, GAP = 0.012;
+  var PITCH = 0.30, CGAP = 0.040;
   var TOP = -Math.PI / 2, BOT = Math.PI / 2;
-  var CX_TXT = 100; // horizontal centre of the ring bounding box, used for the text rows
+  var CX_TXT = 150; // horizontal centre of the two rings, used for the text rows
+  var RING = 282;   // pointer unit radius 1 == RING design units (matches the SKSE plugin hit test)
 
   function f(n) { return Math.round(n * 100) / 100; }
   function esc(s) {
@@ -123,7 +123,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
     return out + '</text>';
   }
 
-  // Line icons drawn in a +-14 box; scaled to the DOM icon size (26px).
+  // Line icons drawn in a +-14 box.
   var ICONS = {
     sword: '<path d="M-4 4 L11 -11 M-9 -1 L1 9 M-6.5 6.5 L-11 11"/>',
     dagger: '<path d="M-2 2 L9 -9 M-6 -2 L2 6 M-4 4 L-9 9"/>',
@@ -146,72 +146,82 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
     back: '<path d="M8 -8 L-6 0 L8 8"/>',
     other: '<rect x="-8" y="-8" width="16" height="16" rx="3"/><path d="M0 -4 L4 0 L0 4 L-4 0 Z"/>'
   };
-  function icon(name, x, y, cls, grow) {
-    var sc = (26 / 28) * (grow ? 1.12 : 1);
+  function icon(name, x, y, px, cls, grow) {
+    var sc = (px / 28) * (grow ? 1.12 : 1);
     return '<g class="icon ' + cls + '" transform="translate(' + f(x) + ' ' + f(y) + ') scale(' + f(sc) + ')">' +
            (ICONS[name] || ICONS.other) + '</g>';
   }
 
-  function categoryRow(s) {
-    var cur = null, left = null, right = null;
-    for (var i = 0; i < s.ribbon.length; i++) {
-      var r = s.ribbon[i];
-      if (r.o === 0) cur = r; else if (r.o === -1) left = r; else if (r.o === 1) right = r;
-    }
-    if (!cur) return '';
-    var y = -226;
-    var out = '<text class="cat-cur" x="' + CX_TXT + '" y="' + y + '">' + esc(cur.n) + '</text>';
-    var half = units(cur.n) * 4.2 + 26;
-    if (left) out += '<text class="cat-side" x="' + f(CX_TXT - half - units(left.n) * 3.2 - 8) + '" y="' + y + '">' + esc(left.n) + '</text>';
-    if (right) out += '<text class="cat-side" x="' + f(CX_TXT + half + units(right.n) * 3.2 + 8) + '" y="' + y + '">' + esc(right.n) + '</text>';
-    return out;
+  // Same fan math as the DOM child ring and as FanFirstAngle() in the plugin.
+  function fanStart(groups, group, count) {
+    var mid = TOP + (group + 0.5) * (BOT - TOP) / groups;
+    var start = mid - PITCH * count / 2 + PITCH / 2;
+    if (start < TOP) start = TOP;
+    if (start + PITCH * (count - 1) > BOT) start = BOT - PITCH * (count - 1);
+    return start;
   }
 
   function build(s) {
-    var n = s.items.length || 8;
-    var step = (BOT - TOP) / n;
-    var halfStep = step / 2 - GAP;
-    var maxU = Math.max(4, Math.min(14, Math.floor(step * (R_OUTER - 28) / 7)));
     var body = '';
     var i;
-    for (i = 0; i < n; i++) {
-      var item = s.items[i];
-      var a = TOP + (i + 0.5) * step;
-      var hover = !!item && i === s.sel;
-      var cls = 'wedge' + (!item ? ' empty' : (!item.us ? ' off' : '')) + (hover ? ' active' : '');
-      body += '<path class="' + cls + '" d="' + sector(R_INNER, R_OUTER, a - halfStep, a + halfStep) + '"/>';
-      if (!item) continue;
-      var muted = !item.us;
-      var lp = hp(R_OUTER - 28, a);
-      var ip = hp(R_INNER + 36, a);
-      body += icon(item.ic, ip[0], ip[1], (muted ? 'muted' : '') + (hover ? ' active' : ''), hover);
-      body += labelSvg(item.n, lp[0], lp[1], maxU, 'wedge-label' + (muted ? ' muted' : '') + (hover ? ' active' : ''));
-      if (item.eq) {
-        body += '<path d="' + arc(R_OUTER - 5, a - halfStep + 0.05, a + halfStep - 0.05) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
+    var n = s.groups.length;
+    var gi = s.gi;
+
+    // Inner ring: groups
+    if (n > 0) {
+      var step = (BOT - TOP) / n;
+      var halfStep = step / 2 - GAP;
+      var maxU = Math.max(4, Math.min(14, Math.floor(step * (R_OUTER - 28) / 7)));
+      for (i = 0; i < n; i++) {
+        var g = s.groups[i];
+        var a = TOP + (i + 0.5) * step;
+        var active = i === gi;
+        body += '<path class="wedge' + (active ? ' active' : '') + '" d="' + sector(R_INNER, R_OUTER, a - halfStep, a + halfStep) + '"/>';
+        var gl = hp(R_OUTER - 28, a), gp = hp(R_INNER + 36, a);
+        body += icon(g.ic, gp[0], gp[1], 26, active ? 'active' : '', active);
+        body += labelSvg(g.n, gl[0], gl[1], maxU, 'wedge-label' + (active ? ' active' : ''));
       }
-      if (item.qs > 0) {
-        var bp = hp(R_INNER + 12, a);
-        body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
-                '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
+      body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
+
+      // Outer ring: items of the active group, fanned around the group
+      var count = s.items.length;
+      var start = fanStart(n, gi, count);
+      var chalf = PITCH / 2 - CGAP / 2;
+      for (i = 0; i < count; i++) {
+        var item = s.items[i];
+        var ca = start + i * PITCH;
+        var hover = i === s.sel;
+        var muted = !item.us;
+        body += '<path class="wedge' + (muted ? ' off' : '') + (hover ? ' active' : '') + '" d="' + sector(R_CIN, R_COUT, ca - chalf, ca + chalf) + '"/>';
+        var ip = hp(236, ca), lp = hp(266, ca);
+        body += icon(item.ic, ip[0], ip[1], 24, (muted ? 'muted' : '') + (hover ? ' active' : ''), hover);
+        body += labelSvg(item.n, lp[0], lp[1], 9, 'wedge-label' + (muted ? ' muted' : '') + (hover ? ' active' : ''));
+        if (item.eq) {
+          body += '<path d="' + arc(R_COUT - 5, ca - chalf + 0.04, ca + chalf - 0.04) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
+        }
+        if (item.qs > 0) {
+          var bp = hp(213, ca);
+          body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
+                  '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
+        }
       }
     }
-    body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
 
-    // text rows (not part of the DOM wheel, needed for categories / selection / pages)
-    body += categoryRow(s);
+    // Text rows (not part of the DOM wheel; needed for the group title, selection and pages)
+    body += '<text class="title" x="' + CX_TXT + '" y="-322">' + esc(s.title || '') + '</text>';
     var c = s.centre;
     if (c) {
-      body += '<text class="info-name" x="' + CX_TXT + '" y="226">' + esc(cut(c.n, 40)) + '</text>';
-      body += '<text class="info-line" x="' + CX_TXT + '" y="248">' + esc(cut(c.info || '', 60)) + '</text>';
+      body += '<text class="info-name" x="' + CX_TXT + '" y="316">' + esc(cut(c.n, 44)) + '</text>';
+      body += '<text class="info-line" x="' + CX_TXT + '" y="338">' + esc(cut(c.info || '', 64)) + '</text>';
     } else {
-      body += '<text class="info-line" x="' + CX_TXT + '" y="226">' + esc(cut(s.idle || '', 60)) + '</text>';
+      body += '<text class="info-line" x="' + CX_TXT + '" y="316">' + esc(cut(s.idle || '', 64)) + '</text>';
     }
     var foot = s.count;
     if (s.pages && s.pages.total > 1) foot += '  \u00B7  ' + (s.pages.cur + 1) + ' / ' + s.pages.total;
-    body += '<text class="info-dim" x="' + CX_TXT + '" y="272">' + esc(foot) + '</text>';
+    body += '<text class="info-dim" x="' + CX_TXT + '" y="364">' + esc(foot) + '</text>';
     if (s.cfg.hints && s.hints) {
       for (i = 0; i < s.hints.length; i++) {
-        body += '<text class="info-dim" x="' + CX_TXT + '" y="' + (294 + i * 18) + '">' + esc(cut(s.hints[i], 80)) + '</text>';
+        body += '<text class="info-dim" x="' + CX_TXT + '" y="' + (388 + i * 18) + '">' + esc(cut(s.hints[i], 90)) + '</text>';
       }
     }
     return body;
@@ -221,7 +231,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
     var W = window.innerWidth || 1920;
     var H = window.innerHeight || 1080;
     var S = Math.min(0.92 * Math.min(W, H), 820);
-    var key = JSON.stringify([s.panel, s.message, s.title, s.ribbon, s.pages, s.count, s.items, s.centre, s.idle, s.hints, s.sel, s.cfg, W, H]);
+    var key = JSON.stringify([s.panel, s.message, s.title, s.groups, s.gi, s.pages, s.count, s.items, s.centre, s.idle, s.hints, s.sel, s.cfg, W, H]);
     if (key !== lastKey) {
       lastKey = key;
       var body;
@@ -239,7 +249,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
     }
     var ptr = document.getElementById('ptr');
     if (ptr && !s.panel) {
-      var px = H_CX + s.x * R_OUTER, py = s.y * R_OUTER;
+      var px = H_CX + s.x * RING, py = s.y * RING;
       ptr.innerHTML = '<circle cx="' + f(px) + '" cy="' + f(py) + '" r="4" fill="#e8932a"/>' +
                       '<circle cx="' + f(px) + '" cy="' + f(py) + '" r="7" fill="none" stroke="rgba(0,0,0,0.82)" stroke-width="2"/>';
     }

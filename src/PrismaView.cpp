@@ -35,9 +35,6 @@ namespace Wheel {
         bool pendingOpen = false;
         std::atomic<bool> taskQueued{false};
 
-        constexpr const char* categoryKeys[] = {"weapons", "armor", "potions", "food", "spells", "shouts", "powers", "other"};
-        static_assert(std::size(categoryKeys) == categoryCount);
-
         // ---------------------------------------------------------------- JSON helpers
         std::string Esc(const std::string& s) {
             std::string out;
@@ -151,83 +148,64 @@ namespace Wheel {
         }
 
         // ---------------------------------------------------------------- snapshot -> JSON
+        // Group label and icon shown on the inner ring.
+        std::string GroupLabel(const Settings& cfg, Category category) {
+            switch (GroupOf(category)) {
+            case 0: return Tr(cfg, "weapons") + " \xC2\xB7 " + Tr(cfg, "armor");
+            case 1: return Tr(cfg, "potions") + " \xC2\xB7 " + Tr(cfg, "food");
+            default: return Tr(cfg, "magic");
+            }
+        }
+        const char* GroupIcon(Category category) {
+            switch (GroupOf(category)) {
+            case 0: return "sword";
+            case 1: return "potion";
+            default: return "magic";
+            }
+        }
+
         std::string BuildOpenJson(const View& v) {
             const auto& cfg = v.config;
-            const auto& t = Style(cfg);
             auto tr = [&](const char* key) { return Tr(cfg, key); };
-            const int selected = WheelSlot(v.x, v.y);
-            const bool panel = v.outfitDialog != 0 || v.settingsOpen;
+            const int selected = WheelSlot(v);
 
             std::string j;
-            j.reserve(6144);
+            j.reserve(4096);
             j += "{\"open\":true";
-            j += ",\"panel\":" + std::string(panel ? "true" : "false");
+            j += ",\"panel\":" + std::string(v.outfitDialog != 0 || v.settingsOpen ? "true" : "false");
             j += ",\"x\":" + Num(v.x) + ",\"y\":" + Num(v.y) + ",\"sel\":" + std::to_string(selected);
+            j += ",\"cfg\":{\"overlay\":" + std::to_string(cfg.overlayOpacity) + ",\"hints\":" + (cfg.showHints ? "true" : "false") + "}";
 
-            // Theme and layout settings
-            j += ",\"theme\":{\"accent\":" + Q(Css(t.accent)) + ",\"text\":" + Q(Css(t.text)) + ",\"muted\":" + Q(Css(t.muted)) +
-                 ",\"sector\":" + Q(Css(t.sector)) + ",\"empty\":" + Q(Css(t.empty)) + ",\"hover\":" + Q(Css(t.hover)) +
-                 ",\"panel\":" + Q(Css(t.panel)) + ",\"border\":" + Q(Css(t.border)) + ",\"borderWidth\":" + Num(t.borderWidth) +
-                 ",\"ornament\":" + Num(t.ornament) + ",\"labelScale\":" + Num(t.labelScale) + ",\"titleScale\":" + Num(t.titleScale) + "}";
-            j += ",\"cfg\":{\"scale\":" + Num(cfg.scale) + ",\"wheelScale\":" + Num(cfg.wheelScale) + ",\"px\":" + std::to_string(cfg.positionX) +
-                 ",\"py\":" + std::to_string(cfg.positionY) + ",\"overlay\":" + std::to_string(cfg.overlayOpacity) +
-                 ",\"hints\":" + (cfg.showHints ? "true" : "false") + ",\"anim\":" + (cfg.animations ? "true" : "false") + "}";
-
-            if (panel) {
-                j += ",\"message\":" + Q("This screen is not available in the PrismaUI build. Press Esc to close.");
-                j += "}";
-                return j;
-            }
-
-            // Title and category ribbon
-            const auto section = v.functionSection;
-            const std::string typeTitle = v.functions
-                ? tr(section == FaceLight::Section::Outfits ? "outfitTitle" : section == FaceLight::Section::Lighting ? "lightTitle" : "lightFollowers")
-                : tr(v.visibleCategories.Count() ? categoryKeys[static_cast<int>(v.category)] : "title");
-            j += ",\"title\":" + Q(typeTitle);
-
-            const int current = v.functions ? (section == FaceLight::Section::Outfits ? 0 : 1) : v.visibleCategories.Index(v.category);
-            const int ribbonCount = v.functions ? FaceLight::TypeCount(v.faceLightAvailable) : v.visibleCategories.Count();
-            const auto ribbon = RibbonLabels(current, ribbonCount);
-            j += ",\"ribbon\":[";
-            for (int i = 0; i < ribbon.size; ++i) {
-                const auto label = ribbon.labels[static_cast<std::size_t>(i)];
-                const char* key = v.functions ? (label.index == 0 ? "outfitTitle" : "lightTitle")
-                                              : categoryKeys[static_cast<int>(v.visibleCategories.At(label.index))];
+            // Inner ring: the visible groups; gi is the group whose items fill the outer ring.
+            const int groups = v.visibleCategories.Count();
+            j += ",\"gi\":" + std::to_string(v.visibleCategories.Index(v.category));
+            j += ",\"groups\":[";
+            for (int i = 0; i < groups; ++i) {
+                const auto category = v.visibleCategories.At(i);
                 if (i) j += ",";
-                j += "{\"o\":" + std::to_string(label.offset) + ",\"n\":" + Q(tr(key)) + "}";
+                j += "{\"n\":" + Q(GroupLabel(cfg, category)) + ",\"ic\":" + Q(GroupIcon(category)) + "}";
             }
             j += "]";
+            j += ",\"title\":" + Q(groups > 0 ? GroupLabel(cfg, v.category) : tr("title"));
 
-            // Page rail
+            // Pages of the active group
             const int total = PageCount(ItemCount(v));
             const int curPage = std::clamp(v.page, 0, total - 1);
-            const auto pages = VisiblePages(total, curPage);
-            j += ",\"pages\":{\"total\":" + std::to_string(total) + ",\"cur\":" + std::to_string(curPage) +
-                 ",\"first\":" + std::to_string(pages.first) + ",\"size\":" + std::to_string(pages.size) + "}";
-            j += ",\"count\":" + Q(std::to_string(ItemCount(v)) + " " +
-                 tr(v.functions ? "functionCount" : v.inventoryWide ? "inventoryCount" : "count"));
-            j += ",\"gamepad\":" + std::string(v.gamepad ? "true" : "false");
-            j += ",\"padPair\":" + std::string(cfg.gamepadCategoryButtons == 1 ? "\"LT\"" : "\"LB\"");
-            j += ",\"padPairR\":" + std::string(cfg.gamepadCategoryButtons == 1 ? "\"RT\"" : "\"RB\"");
+            j += ",\"pages\":{\"total\":" + std::to_string(total) + ",\"cur\":" + std::to_string(curPage) + "}";
+            j += ",\"count\":" + Q(std::to_string(ItemCount(v)) + " " + tr(v.inventoryWide ? "inventoryCount" : "count"));
 
-            // Slots
+            // Outer ring: items of the current page (no empty entries; index == tile index)
             j += ",\"items\":[";
-            for (int slot = 0; slot < slots; ++slot) {
-                if (slot) j += ",";
-                const int index = PageItemIndex(v, slot);
-                if (index < 0 || index >= static_cast<int>(v.items.size())) {
-                    j += "null";
-                    continue;
-                }
-                const auto& item = v.items[static_cast<std::size_t>(index)];
+            for (std::size_t i = 0; i < v.items.size(); ++i) {
+                const auto& item = v.items[i];
+                if (i) j += ",";
                 j += "{\"n\":" + Q(item.name) + ",\"st\":" + Q(State(v, item)) + ",\"eq\":" + (item.equipped ? "true" : "false") +
                      ",\"us\":" + (item.usable ? "true" : "false") + ",\"qs\":" +
                      std::to_string(ValidQuickSlot(item.quickSlot) ? item.quickSlot + 1 : 0) + ",\"ic\":" + Q(IconName(item)) + "}";
             }
             j += "]";
 
-            // Centre
+            // Info about the selected item
             const int index = PageItemIndex(v, selected);
             if (selected >= 0 && index >= 0 && index < static_cast<int>(v.items.size())) {
                 const auto& item = v.items[static_cast<std::size_t>(index)];
@@ -238,30 +216,18 @@ namespace Wheel {
                     if (!data.stats.empty()) info = data.stats[0].label + " " + data.stats[0].value;
                     else if (!data.effects.empty()) info = data.effects[0].label;
                 }
-                j += ",\"centre\":{\"n\":" + Q(item.name) + ",\"info\":" + Q(info) + ",\"eq\":" + (item.equipped ? "true" : "false") +
-                     ",\"us\":" + (item.usable ? "true" : "false") + ",\"ic\":" + Q(IconName(item)) + "}";
+                j += ",\"centre\":{\"n\":" + Q(item.name) + ",\"info\":" + Q(info) + "}";
             } else {
-                const char* key = v.inventoryLoading && !v.functions ? "inventoryLoading"
-                                  : v.items.empty() ? (v.inventoryWide && !v.functions ? "inventoryEmpty" : "empty")
-                                                    : "move";
+                const char* key = v.inventoryLoading ? "inventoryLoading" : v.items.empty() ? (v.inventoryWide ? "inventoryEmpty" : "empty") : "move";
                 j += ",\"centre\":null,\"idle\":" + Q(tr(key));
             }
 
             // Hints
             if (cfg.showHints) {
-                const bool quickHint = !v.functions && !v.gamepad;
-                const std::string l1 = tr(v.gamepad ? (cfg.gamepadCategoryButtons == 1 ? "padUseBumpers" : "padUseTriggers")
-                                                    : v.functions ? (section == FaceLight::Section::Outfits ? "functionUse" : "lightUse") : "compactUse");
-                std::string l2;
-                if (v.gamepad) {
-                    l2 = tr(v.appliedGamepadMove ? (cfg.timeMode == 0 ? "padNavigationRight" : "padNavigationMoving") : "padNavigation");
-                } else {
-                    auto copy = cfg;
-                    copy.hotkey = cfg.switchKey;
-                    l2 = KeyLabel(copy) + " " + tr(v.functions && section == FaceLight::Section::Followers ? "lightNavigation" : "dualWheelHint");
-                }
-                j += ",\"hints\":[" + Q(l1) + "," + Q(l2);
-                if (quickHint) j += "," + Q(tr(v.inventoryWide ? "allQuickSlotHint" : "quickSlotHint"));
+                const std::string l1 = tr(v.gamepad ? (cfg.gamepadCategoryButtons == 1 ? "padUseBumpers" : "padUseTriggers") : "compactUse");
+                j += ",\"hints\":[" + Q(l1);
+                if (v.gamepad) j += "," + Q(tr(v.appliedGamepadMove ? (cfg.timeMode == 0 ? "padNavigationRight" : "padNavigationMoving") : "padNavigation"));
+                else j += "," + Q(tr(v.inventoryWide ? "allQuickSlotHint" : "quickSlotHint"));
                 j += "]";
             }
             j += "}";

@@ -17,26 +17,27 @@ namespace Wheel {
     }
     struct InventoryPages {
         std::vector<Item> items;
-        std::array<std::size_t,categoryCount+1> boundaries{};
+        std::array<std::size_t,groupCount+1> boundaries{};
         VisibleCategories visible{0};
         void Set(std::vector<Item> values) {
+            // Items arrive sorted by category; groups are runs of adjacent categories.
+            std::erase_if(values,[](const Item& item){return GroupOf(item.category)<0;});
             items=std::move(values);
             std::size_t at=0;
-            for(int category=0;category<categoryCount;++category) {
-                boundaries[category]=at;
-                while(at<items.size() && static_cast<int>(items[at].category)==category)++at;
-            }
-            boundaries[categoryCount]=at;
             visible.mask=0;
-            for(int category=0;category<categoryCount;++category)
-                if(boundaries[category+1]>boundaries[category])visible.mask|=1u<<category;
+            for(int group=0;group<groupCount;++group) {
+                boundaries[group]=at;
+                while(at<items.size() && GroupOf(items[at].category)==group)++at;
+                if(at>boundaries[group])visible.mask|=1u<<static_cast<int>(groupCategory[group]);
+            }
+            boundaries[groupCount]=at;
         }
         ItemPage Page(Category category,int& page) const {
-            const auto type=static_cast<int>(category);
-            return SlicePage(items,boundaries[type],boundaries[type+1]-boundaries[type],page);
+            const int group=std::max(0,GroupOf(category));
+            return SlicePage(items,boundaries[group],boundaries[group+1]-boundaries[group],page);
         }
         std::size_t Index(Category category,int page,int slot)const {
-            return boundaries[static_cast<int>(category)]+static_cast<std::size_t>(page)*slots+slot;
+            return boundaries[std::max(0,GroupOf(category))]+static_cast<std::size_t>(page)*slots+slot;
         }
     };
 }

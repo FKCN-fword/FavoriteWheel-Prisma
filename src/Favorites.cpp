@@ -39,7 +39,7 @@ namespace Wheel {
             if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESAmmo>()) return Category::Weapons;
             if (form->As<RE::TESObjectARMO>()) return Category::Armor;
             if (const auto potion = form->As<RE::AlchemyItem>()) {
-                if (potion->IsPoison()) return Category::Other;
+                if (potion->IsPoison()) return Category::Potions;
                 return potion->IsFood() ? Category::Food : Category::Potions;
             }
             return Category::Other;
