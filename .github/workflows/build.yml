@@ -18,7 +18,9 @@ jobs:
 
       - name: Fetch pinned CommonLibSSE-NG
         shell: pwsh
-        run: ./scripts/bootstrap.ps1
+        run: |
+          ./scripts/bootstrap.ps1
+          $global:LASTEXITCODE = 0
 
       - name: Configure
         shell: pwsh
