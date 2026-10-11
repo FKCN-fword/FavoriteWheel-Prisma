@@ -1,0 +1,68 @@
+name: Build FavoriteWheel (PrismaUI display)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Fetch pinned CommonLibSSE-NG
+        shell: pwsh
+        run: ./scripts/bootstrap.ps1
+
+      - name: Configure
+        shell: pwsh
+        run: xmake f -m release -y 2>&1 | Tee-Object -FilePath configure.log
+
+      - name: Build
+        shell: pwsh
+        run: |
+          xmake build -y -v FavoriteWheel 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse -Filter FavoriteWheel.dll build | Select-Object -First 1
+          if (-not $dll) { Write-Error "FavoriteWheel.dll not found"; exit 1 }
+          Write-Host "DLL: $($dll.FullName) ($($dll.Length) bytes)"
+          New-Item -ItemType Directory -Force dist/SKSE/Plugins/FavoriteWheel/Languages | Out-Null
+          New-Item -ItemType Directory -Force dist/SKSE/Plugins/FavoriteWheel/Themes | Out-Null
+          New-Item -ItemType Directory -Force dist/PrismaUI/views/FavoriteWheel | Out-Null
+          Copy-Item $dll.FullName dist/SKSE/Plugins/FavoriteWheel.dll
+          Copy-Item assets/Languages/*.ini dist/SKSE/Plugins/FavoriteWheel/Languages/
+          Copy-Item assets/Themes/*.ini dist/SKSE/Plugins/FavoriteWheel/Themes/
+          Copy-Item PrismaUI/views/FavoriteWheel/index.html dist/PrismaUI/views/FavoriteWheel/
+          Copy-Item LICENSE, README.md dist/
+          # Import check: no non-system DLL may be required (Error 126 guard).
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem -Recurse "$vs\VC\Tools\MSVC" -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          if ($dumpbin) {
+            $deps = & $dumpbin.FullName /dependents $dll.FullName | Out-String
+            Write-Host $deps
+            if ($deps -match '(?i)spdlog\.dll' -or $deps -match '(?i)\bfmt\.dll') { Write-Error "DLL imports spdlog/fmt"; exit 1 }
+          } else { Write-Host "dumpbin not found; import check skipped" }
+          Get-ChildItem -Recurse dist | ForEach-Object { $_.FullName.Replace("$PWD\", '') }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FavoriteWheel-PrismaUI
+          path: dist/**
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            configure.log
+            build.log
