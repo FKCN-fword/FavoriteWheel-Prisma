@@ -6,7 +6,7 @@
 #include <numbers>
 
 namespace Wheel {
-    constexpr int slots = 8;
+    constexpr int slots = 6;
     enum class Category { Weapons, Armor, Potions, Food, Spells, Shouts, Powers, Other, Count };
     constexpr int categoryCount = static_cast<int>(Category::Count);
     inline int Wrap(int value, int count) { return count > 0 ? (value % count + count) % count : 0; }
