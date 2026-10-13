@@ -12,11 +12,11 @@ namespace Wheel {
     inline int Wrap(int value, int count) { return count > 0 ? (value % count + count) % count : 0; }
     inline int PageCount(std::size_t count) { return std::max(1, static_cast<int>((count + slots - 1) / slots)); }
     // Main groups shown on the inner half-ring. Each group is represented by its first category.
-    constexpr int groupCount = 3;
-    constexpr Category groupCategory[groupCount] = {Category::Weapons, Category::Potions, Category::Spells};
+    constexpr int groupCount = 4;
+    constexpr Category groupCategory[groupCount] = {Category::Weapons, Category::Potions, Category::Spells, Category::Other};
     constexpr std::uint32_t groupMask = (1u << static_cast<int>(Category::Weapons)) | (1u << static_cast<int>(Category::Potions)) |
-                                        (1u << static_cast<int>(Category::Spells));
-    // Weapons+Apparel, Potions+Food, Spells+Shouts+Powers. Other items are not shown on the wheel.
+                                        (1u << static_cast<int>(Category::Spells)) | (1u << static_cast<int>(Category::Other));
+    // Weapons+Apparel, Potions+Food, Spells+Shouts+Powers, and the special group (Other). Everything else is hidden.
     inline int GroupOf(Category category) {
         switch (category) {
         case Category::Weapons:
@@ -26,6 +26,7 @@ namespace Wheel {
         case Category::Spells:
         case Category::Shouts:
         case Category::Powers: return 2;
+        case Category::Other: return 3; // Only the configured special items ever carry this category.
         default: return -1;
         }
     }

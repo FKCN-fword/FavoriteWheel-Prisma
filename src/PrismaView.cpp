@@ -107,6 +107,7 @@ namespace Wheel {
             return Tr(v.config, key);
         }
         const char* IconName(const Item& item) {
+            if (item.category == Category::Other) return "bag";
             switch (item.icon) {
             case IconKind::Sword: return "sword";
             case IconKind::Dagger: return "dagger";
@@ -154,6 +155,7 @@ namespace Wheel {
             switch (GroupOf(category)) {
             case 0: return {Tr(cfg, "weapons"), Tr(cfg, "armor")};
             case 1: return {Tr(cfg, "potions"), Tr(cfg, "food")};
+            case 3: return {Tr(cfg, "haven")};
             default: return {Tr(cfg, "magic")};
             }
         }
@@ -167,6 +169,7 @@ namespace Wheel {
             switch (GroupOf(category)) {
             case 0: return "sword";
             case 1: return "potion";
+            case 3: return "bag";
             default: return "magic";
             }
         }

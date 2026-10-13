@@ -10,6 +10,8 @@ namespace Wheel {
         int slowPercent = 50; // Relative slowdown, with an absolute 50% physics floor.
         std::string language = "auto"; // Windows display language, or an explicit language-file ID.
         std::string theme = "classic";
+        std::string specialPlugin = "HavenBag.esp"; // Armor from this plugin forms the 4th main group; empty disables it.
+        std::string specialName; // Optional name filter (substring) for the special group.
         bool showHints = true;
         float scale = 1.0f;
         float wheelScale = 1.0f;

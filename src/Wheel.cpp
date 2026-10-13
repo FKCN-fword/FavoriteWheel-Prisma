@@ -412,7 +412,7 @@ namespace Wheel {
             }
             // Outfit changes close the overlay so the player can observe the full transition.
             const bool keep=selected.action!=ActionKind::Outfit && KeepWheelAfterUse(current.config.keepOpen,selected.action==ActionKind::Favorite &&
-                (selected.category==Category::Potions || selected.category==Category::Food));
+                (selected.category==Category::Potions || selected.category==Category::Food || selected.category==Category::Other));
             {
                 std::lock_guard lock(actionMutex);
                 pendingAction = PendingAction{selected, left, epoch.load(), std::chrono::steady_clock::now() + std::chrono::seconds(2),keep,openSerial.load()};

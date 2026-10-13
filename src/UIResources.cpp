@@ -141,7 +141,7 @@ namespace Wheel {
             {"outfitPartial","Outfit change was incomplete. Check your equipment and log."},
             {"outfitRemoved","Armor, clothing and jewelry removed. Weapons and shields retained."},
             {"outfitApplied","Outfit equipped."},
-            {"title","F A V O R I T E S"},{"weapons","WEAPONS"},{"armor","APPAREL"},{"potions","POTIONS"},{"food","FOOD"},{"magic","MAGIC"},{"spells","SPELLS"},{"shouts","SHOUTS"},{"powers","POWERS"},{"other","OTHER"},
+            {"title","F A V O R I T E S"},{"weapons","WEAPONS"},{"armor","APPAREL"},{"potions","POTIONS"},{"food","FOOD"},{"magic","MAGIC"},{"haven","HAVEN BAG"},{"spells","SPELLS"},{"shouts","SHOUTS"},{"powers","POWERS"},{"other","OTHER"},
             {"equipped","EQUIPPED"},{"select","CLICK TO SELECT"},{"inventory","USE IN INVENTORY"},{"empty","NO FAVORITES"},{"move","MOVE TO SELECT"},{"count","FAVORITES"},
             {"categoriesHint","A / D  CATEGORY     W / S OR SCROLL  PAGE"},{"useHint","LMB USE / RIGHT HAND    RMB LEFT HAND    ESC CLOSE"},
             {"compactNavigation","A / D CATEGORY  ·  W / S / SCROLL PAGE"},{"compactUse","LMB USE / RIGHT HAND  ·  RMB LEFT HAND"},{"compactClose","ESC CLOSE"},

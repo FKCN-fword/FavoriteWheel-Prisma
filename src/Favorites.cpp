@@ -37,6 +37,24 @@ namespace Wheel {
             }
             return key;
         }
+        bool EqualsNoCase(std::string_view a,std::string_view b) {
+            return a.size()==b.size() && std::equal(a.begin(),a.end(),b.begin(),[](char x,char y){
+                return std::tolower(static_cast<unsigned char>(x))==std::tolower(static_cast<unsigned char>(y));});
+        }
+        // Armor from the configured plugin (e.g. a Haven Bag style item) forms the special 4th group.
+        // Matching uses the owning plugin file, so light (ESPFE) load-order indexes do not matter.
+        bool IsSpecial(RE::TESBoundObject* object) {
+            if(!object || !object->As<RE::TESObjectARMO>())return false;
+            const auto config=Config();
+            if(config.specialPlugin.empty())return false;
+            const auto file=object->GetFile(0);
+            if(!file || !EqualsNoCase(file->GetFilename(),config.specialPlugin))return false;
+            if(!config.specialName.empty()) {
+                const char* name=object->GetName();
+                if(!name || !std::string_view(name).contains(config.specialName))return false;
+            }
+            return true;
+        }
         Category Classify(RE::TESBoundObject* form) {
             if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESAmmo>()) return Category::Weapons;
             if (form->As<RE::TESObjectARMO>()) return Category::Armor;
@@ -92,12 +110,14 @@ namespace Wheel {
         void AppendInventory(std::vector<Item>& result,RE::TESBoundObject* object,int count,
             RE::InventoryEntryData* entry,bool allInventory,const Item* exact=nullptr) {
             if(!object || count<=0)return;
-            const auto category=Classify(object);const auto icon=ClassifyIcon(object);const bool usable=Supported(object);
+            const bool special=IsSpecial(object);const bool visibleAll=allInventory||special;
+            const auto category=special?Category::Other:Classify(object);const auto icon=ClassifyIcon(object);const bool usable=Supported(object);
+            if(category==Category::Other && !special)return; // Only the configured special items use the 4th group.
             auto append=[&](RE::ExtraDataList* extra,int amount) {
                 if(amount<=0)return;
                 const auto hotkey=extra?extra->GetByType<RE::ExtraHotkey>():nullptr;
                 const bool favorite=IsFavorite(hotkey);
-                if(!InventoryVisible(allInventory,favorite))return;
+                if(!InventoryVisible(visibleAll,favorite))return;
                 if(exact && (reinterpret_cast<std::uintptr_t>(extra)!=exact->key.extra ||
                     Key(object,extra)!=exact->key || (exact->favorited && !favorite)))return;
                 const char* name=extra?extra->GetDisplayName(object):object->GetName();
@@ -113,7 +133,7 @@ namespace Wheel {
             if(entry && entry->extraLists)for(auto extra:*entry->extraLists)if(extra) {
                 const int amount=budget.Take(extra->GetCount());
                 const bool favorite=IsFavorite(extra->GetByType<RE::ExtraHotkey>());
-                if(amount>0 && (!anchor || (!anchorFavorite && favorite)) && InventoryVisible(allInventory,favorite) && Plain(extra)) {
+                if(amount>0 && (!anchor || (!anchorFavorite && favorite)) && InventoryVisible(visibleAll,favorite) && Plain(extra)) {
                     // Preserve native favorites behavior; all-inventory merging
                     // additionally protects ownership/charge/poison/soul differences.
                     const bool compatible=!allInventory || (!extra->HasType<RE::ExtraOwnership>() &&
@@ -126,7 +146,7 @@ namespace Wheel {
                 const int amount=budget.Take(extra->GetCount());
                 append(extra,amount+(extra==anchor?spare:0));
             }
-            if(allInventory && !anchor)append(nullptr,spare);
+            if(visibleAll && !anchor)append(nullptr,spare);
         }
         std::optional<Item> ResolveItem(const Item& requested) {
             auto player=RE::PlayerCharacter::GetSingleton();if(!player)return {};
@@ -256,7 +276,7 @@ namespace Wheel {
         });
         result.reserve(inventory.size());
         for(const auto& [object,stock]:inventory) {
-            if(stock.count<=0 || (!allInventory && (!stock.entry || !stock.entry->IsFavorited())))continue;
+            if(stock.count<=0 || (!allInventory && !IsSpecial(object) && (!stock.entry || !stock.entry->IsFavorited())))continue;
             const auto first=result.size();
             AppendInventory(result,object,static_cast<int>(std::min<std::int64_t>(stock.count,INT_MAX)),stock.entry,allInventory);
             if(includeInfo)for(auto i=first;i<result.size();++i) {

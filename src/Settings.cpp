@@ -86,6 +86,8 @@ namespace Wheel {
             settings.language = Read(file,L"General",L"Language",legacyLanguage.empty() ? settings.language :
                 (number(L"General",L"Chinese",1) ? "zh_CN" : "en"));
             settings.theme = Read(file,L"Display",L"Theme",settings.theme);
+            settings.specialPlugin = Read(file,L"Special",L"Plugin",settings.specialPlugin);
+            settings.specialName = Read(file,L"Special",L"Name",settings.specialName);
             settings.showHints = number(L"Display",L"ShowHints",settings.showHints) != 0;
             settings.wheelScale=number(L"Display",L"WheelScalePercent",static_cast<int>(settings.wheelScale*100))/100.f;
             settings.positionX=number(L"Display",L"PositionXPercent",settings.positionX);
@@ -185,6 +187,8 @@ namespace Wheel {
             write(L"General",L"TimeMode",std::to_string(settings.timeMode)) &&
             write(L"General",L"SlowTimePercent",std::to_string(settings.slowPercent)) &&
             write(L"Display",L"Theme",settings.theme) &&
+            write(L"Special",L"Plugin",settings.specialPlugin) &&
+            write(L"Special",L"Name",settings.specialName) &&
             write(L"Display",L"ShowHints",settings.showHints?"1":"0") &&
             write(L"Display",L"WheelScalePercent",std::to_string(static_cast<int>(settings.wheelScale*100+.5f))) &&
             write(L"Display",L"PositionXPercent",std::to_string(settings.positionX)) &&
