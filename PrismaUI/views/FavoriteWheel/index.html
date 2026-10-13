@@ -69,7 +69,6 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 
   // DOM half-ring constants (design units, viewBox -440..440)
   var R_INNER = 88, R_OUTER = 190, R_CIN = 202, R_COUT = 282, H_CX = 12, GAP = 0.012;
-  var PITCH = 0.30, CGAP = 0.040;
   var TOP = -Math.PI / 2, BOT = Math.PI / 2;
   var CX_TXT = 150; // horizontal centre of the two rings, used for the text rows
   var RING = 282;   // pointer unit radius 1 == RING design units (matches the SKSE plugin hit test)
@@ -155,15 +154,6 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
            (ICONS[name] || ICONS.other) + '</g>';
   }
 
-  // Same fan math as the DOM child ring and as FanFirstAngle() in the plugin.
-  function fanStart(groups, group, count) {
-    var mid = TOP + (group + 0.5) * (BOT - TOP) / groups;
-    var start = mid - PITCH * count / 2 + PITCH / 2;
-    if (start < TOP) start = TOP;
-    if (start + PITCH * (count - 1) > BOT) start = BOT - PITCH * (count - 1);
-    return start;
-  }
-
   function build(s) {
     var body = '';
     var i;
@@ -191,34 +181,37 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
       }
       body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
 
-      // Outer ring: items of the active group, fanned around the group
+      // Outer ring: the whole right half split evenly between the items of the current page
       var count = s.items.length;
-      var start = fanStart(n, gi, count);
-      var chalf = PITCH / 2 - CGAP / 2;
-      for (i = 0; i < count; i++) {
-        var item = s.items[i];
-        var ca = start + i * PITCH;
-        var hover = i === s.sel;
-        var muted = !item.us;
-        body += '<path class="wedge' + (muted ? ' off' : '') + (hover ? ' active' : '') + '" d="' + sector(R_CIN, R_COUT, ca - chalf, ca + chalf) + '"/>';
-        var ip = hp(236, ca), lp = hp(266, ca);
-        body += icon(item.ic, ip[0], ip[1], 24, (muted ? 'muted' : '') + (hover ? ' active' : ''), hover);
-        body += labelSvg(item.n, lp[0], lp[1], 9, 'wedge-label' + (muted ? ' muted' : '') + (hover ? ' active' : ''));
-        if (item.eq) {
-          body += '<path d="' + arc(R_COUT - 5, ca - chalf + 0.04, ca + chalf - 0.04) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
-        }
-        // stack size from the state text ("x5" or "x5 \u00B7 Equipped"); single items show nothing
-        var cm = /^x(\d+)/.exec(item.st || '');
-        var cnt = cm ? parseInt(cm[1], 10) : 0;
-        var hasCnt = cnt > 1;
-        if (item.qs > 0) {
-          var bp = hp(213, ca - (hasCnt ? 0.075 : 0));
-          body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
-                  '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
-        }
-        if (hasCnt) {
-          var cp = hp(213, ca + (item.qs > 0 ? 0.065 : 0));
-          body += '<text class="count' + (hover ? ' active' : '') + '" x="' + f(cp[0]) + '" y="' + f(cp[1]) + '">\u00D7' + (cnt > 999 ? '999+' : cnt) + '</text>';
+      if (count > 0) {
+        var cstep = (BOT - TOP) / count;
+        var chalf = cstep / 2 - 0.014;
+        var cmaxU = Math.max(6, Math.min(22, Math.floor(cstep * 262 / 7)));
+        for (i = 0; i < count; i++) {
+          var item = s.items[i];
+          var ca = TOP + (i + 0.5) * cstep;
+          var hover = i === s.sel;
+          var muted = !item.us;
+          body += '<path class="wedge' + (muted ? ' off' : '') + (hover ? ' active' : '') + '" d="' + sector(R_CIN, R_COUT, ca - chalf, ca + chalf) + '"/>';
+          var ip = hp(236, ca), lp = hp(266, ca);
+          body += icon(item.ic, ip[0], ip[1], 24, (muted ? 'muted' : '') + (hover ? ' active' : ''), hover);
+          body += labelSvg(item.n, lp[0], lp[1], cmaxU, 'wedge-label' + (muted ? ' muted' : '') + (hover ? ' active' : ''));
+          if (item.eq) {
+            body += '<path d="' + arc(R_COUT - 5, ca - chalf + 0.04, ca + chalf - 0.04) + '" fill="none" stroke="#c8791f" stroke-width="2.5" stroke-linecap="round"/>';
+          }
+          // stack size from the state text ("x5" or "x5 \u00B7 Equipped"); single items show nothing
+          var cm = /^x(\d+)/.exec(item.st || '');
+          var cnt = cm ? parseInt(cm[1], 10) : 0;
+          var hasCnt = cnt > 1;
+          if (item.qs > 0) {
+            var bp = hp(213, ca - (hasCnt ? 0.075 : 0));
+            body += '<circle class="badge" cx="' + f(bp[0]) + '" cy="' + f(bp[1]) + '" r="8"/>' +
+                    '<text class="badge-n" x="' + f(bp[0]) + '" y="' + f(bp[1]) + '">' + item.qs + '</text>';
+          }
+          if (hasCnt) {
+            var cp = hp(213, ca + (item.qs > 0 ? 0.065 : 0));
+            body += '<text class="count' + (hover ? ' active' : '') + '" x="' + f(cp[0]) + '" y="' + f(cp[1]) + '">\u00D7' + (cnt > 999 ? '999+' : cnt) + '</text>';
+          }
         }
       }
     }

@@ -34,34 +34,20 @@ namespace Wheel {
     // Angles: 0 = +x axis, -pi/2 = top, +pi/2 = bottom; only the right half (x > 0) selects.
     constexpr float ringScale = 282.0f;
     constexpr float groupInner = 88.0f / ringScale, groupOuter = 196.0f / ringScale, itemInner = 200.0f / ringScale;
-    constexpr float childPitch = 0.30f;
-    inline constexpr float HalfPi() { return std::numbers::pi_v<float> * 0.5f; }
-
+    // Outer ring: the whole right half split evenly between the items of the current page.
+    inline int ItemHit(float x, float y, int count) {
+        if (count <= 0 || x <= 0.0f) return -1;
+        if (std::hypot(x, y) < itemInner) return -1;
+        const float angle = std::atan2(x, -y); // 0 at the top, pi at the bottom
+        return std::clamp(static_cast<int>(std::floor(angle / std::numbers::pi_v<float> * count)), 0, count - 1);
+    }
     // Inner ring: index of the group under the pointer, or -1.
     inline int GroupHit(float x, float y, int groups) {
         if (groups <= 0 || x <= 0.0f) return -1;
         const float r = std::hypot(x, y);
         if (r < groupInner || r > groupOuter) return -1;
-        const float angle = std::atan2(x, -y); // 0 at the top, pi at the bottom
+        const float angle = std::atan2(x, -y);
         return std::clamp(static_cast<int>(std::floor(angle / std::numbers::pi_v<float> * groups)), 0, groups - 1);
-    }
-    // Angle of the first item tile of the fan opened by `group` (same math as the DOM child fan).
-    inline float FanFirstAngle(int groups, int group, int count) {
-        const float top = -HalfPi(), bottom = HalfPi();
-        const float mid = top + (group + 0.5f) * (bottom - top) / static_cast<float>(groups);
-        float start = mid - childPitch * static_cast<float>(count) * 0.5f + childPitch * 0.5f;
-        if (start < top) start = top;
-        if (start + childPitch * static_cast<float>(count - 1) > bottom) start = bottom - childPitch * static_cast<float>(count - 1);
-        return start;
-    }
-    // Outer ring: index of the item tile under the pointer, or -1.
-    inline int ItemHit(float x, float y, int groups, int group, int count) {
-        if (count <= 0 || groups <= 0 || x <= 0.0f) return -1;
-        if (std::hypot(x, y) < itemInner) return -1;
-        const float angle = std::atan2(y, x);
-        const float start = FanFirstAngle(groups, group, count) - childPitch * 0.5f;
-        const int index = static_cast<int>(std::floor((angle - start) / childPitch));
-        return index >= 0 && index < count ? index : -1;
     }
     inline void MovePointer(float& x, float& y, float dx, float dy) {
         x += dx; y += dy;
