@@ -183,7 +183,8 @@ namespace Wheel {
 
     namespace {
         // Consumables that come in fill levels ("Waterskin 1/3", "Waterskin 2/3", ...) are separate forms.
-        // Merge the levels that are on the wheel into one tile that drinks the least-full one first.
+        // Show them as one tile named after the base item (the count is the total remaining uses);
+        // using the tile drinks the least-full level first.
         struct Fraction { std::string base; int part=0; int whole=0; };
         std::optional<Fraction> ParseFraction(const std::string& name) {
             std::string s=name;
@@ -227,7 +228,7 @@ namespace Wheel {
             }
             std::vector<bool> removed(items.size(),false);
             for(auto& [key,group]:groups) {
-                if(group.members.size()<2)continue;
+                if(group.members.empty())continue; // Even a single level shows the base name, so the tile does not rename itself.
                 std::sort(group.members.begin(),group.members.end(),[&](const Member& a,const Member& b){
                     if(a.part!=b.part)return a.part<b.part;
                     return items[a.index].key.form<items[b.index].key.form;
