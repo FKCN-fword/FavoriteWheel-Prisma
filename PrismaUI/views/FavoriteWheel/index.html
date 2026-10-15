@@ -69,7 +69,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 
   // DOM half-ring constants (design units, viewBox -440..440)
   var R_INNER = 88, R_OUTER = 190, R_CIN = 202, R_COUT = 282, H_CX = 12, GAP = 0.012;
-  var PITCH = 0.30, CGAP = 0.040;
+  var PITCH = 0.60, CGAP = 0.040;
   var TOP = -Math.PI / 2, BOT = Math.PI / 2;
   var CX_TXT = 150; // horizontal centre of the two rings, used for the text rows
   var RING = 282;   // pointer unit radius 1 == RING design units (matches the SKSE plugin hit test)
@@ -197,7 +197,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
       if (count > 0) {
         var cstart = fanStart(n, gi, count);
         var chalf = PITCH / 2 - CGAP / 2;
-        var cmaxU = 9;
+        var cmaxU = Math.max(6, Math.min(24, Math.floor((PITCH - CGAP) * 262 / 7)));
         for (i = 0; i < count; i++) {
           var item = s.items[i];
           var ca = cstart + i * PITCH;

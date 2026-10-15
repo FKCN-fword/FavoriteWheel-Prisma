@@ -37,7 +37,7 @@ namespace Wheel {
     constexpr float groupInner = 88.0f / ringScale, groupOuter = 196.0f / ringScale, itemInner = 200.0f / ringScale;
     // Outer ring: fixed-size tiles fanned around the active group (DOM child fan). The tile centres stay inside
     // the half circle, so the first/last tile may overhang it by half a tile.
-    constexpr float childPitch = 0.30f;
+    constexpr float childPitch = 0.60f;
     inline float FanFirstAngle(int groups, int group, int count) {
         const float top = -std::numbers::pi_v<float> * 0.5f, bottom = -top;
         const float mid = top + (static_cast<float>(group) + 0.5f) * (bottom - top) / static_cast<float>(groups);
