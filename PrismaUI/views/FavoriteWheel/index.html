@@ -69,6 +69,7 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
 
   // DOM half-ring constants (design units, viewBox -440..440)
   var R_INNER = 88, R_OUTER = 190, R_CIN = 202, R_COUT = 282, H_CX = 12, GAP = 0.012;
+  var PITCH = 0.30, CGAP = 0.040;
   var TOP = -Math.PI / 2, BOT = Math.PI / 2;
   var CX_TXT = 150; // horizontal centre of the two rings, used for the text rows
   var RING = 282;   // pointer unit radius 1 == RING design units (matches the SKSE plugin hit test)
@@ -155,6 +156,15 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
            (ICONS[name] || ICONS.other) + '</g>';
   }
 
+  // Same fan math as the DOM child ring and as FanFirstAngle() in the plugin.
+  function fanStart(groups, group, count) {
+    var mid = TOP + (group + 0.5) * (BOT - TOP) / groups;
+    var start = mid - PITCH * count / 2 + PITCH / 2;
+    if (start < TOP) start = TOP;
+    if (start + PITCH * (count - 1) > BOT) start = BOT - PITCH * (count - 1);
+    return start;
+  }
+
   function build(s) {
     var body = '';
     var i;
@@ -182,15 +192,15 @@ body { font-family: var(--sans); color: var(--text); user-select: none; -webkit-
       }
       body += '<path class="h-centerline" d="' + arc((R_INNER + R_OUTER) / 2, TOP, BOT) + '"/>';
 
-      // Outer ring: the whole right half split evenly between the items of the current page
+      // Outer ring: fixed-size tiles fanned around the active group (may overhang the half circle slightly)
       var count = s.items.length;
       if (count > 0) {
-        var cstep = (BOT - TOP) / count;
-        var chalf = cstep / 2 - 0.014;
-        var cmaxU = Math.max(6, Math.min(22, Math.floor(cstep * 262 / 7)));
+        var cstart = fanStart(n, gi, count);
+        var chalf = PITCH / 2 - CGAP / 2;
+        var cmaxU = 9;
         for (i = 0; i < count; i++) {
           var item = s.items[i];
-          var ca = TOP + (i + 0.5) * cstep;
+          var ca = cstart + i * PITCH;
           var hover = i === s.sel;
           var muted = !item.us;
           body += '<path class="wedge' + (muted ? ' off' : '') + (hover ? ' active' : '') + '" d="' + sector(R_CIN, R_COUT, ca - chalf, ca + chalf) + '"/>';

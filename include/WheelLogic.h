@@ -35,12 +35,24 @@ namespace Wheel {
     // Angles: 0 = +x axis, -pi/2 = top, +pi/2 = bottom; only the right half (x > 0) selects.
     constexpr float ringScale = 282.0f;
     constexpr float groupInner = 88.0f / ringScale, groupOuter = 196.0f / ringScale, itemInner = 200.0f / ringScale;
-    // Outer ring: the whole right half split evenly between the items of the current page.
-    inline int ItemHit(float x, float y, int count) {
-        if (count <= 0 || x <= 0.0f) return -1;
+    // Outer ring: fixed-size tiles fanned around the active group (DOM child fan). The tile centres stay inside
+    // the half circle, so the first/last tile may overhang it by half a tile.
+    constexpr float childPitch = 0.30f;
+    inline float FanFirstAngle(int groups, int group, int count) {
+        const float top = -std::numbers::pi_v<float> * 0.5f, bottom = -top;
+        const float mid = top + (static_cast<float>(group) + 0.5f) * (bottom - top) / static_cast<float>(groups);
+        float start = mid - childPitch * static_cast<float>(count) * 0.5f + childPitch * 0.5f;
+        if (start < top) start = top;
+        if (start + childPitch * static_cast<float>(count - 1) > bottom) start = bottom - childPitch * static_cast<float>(count - 1);
+        return start;
+    }
+    inline int ItemHit(float x, float y, int groups, int group, int count) {
+        if (count <= 0 || groups <= 0) return -1;
         if (std::hypot(x, y) < itemInner) return -1;
-        const float angle = std::atan2(x, -y); // 0 at the top, pi at the bottom
-        return std::clamp(static_cast<int>(std::floor(angle / std::numbers::pi_v<float> * count)), 0, count - 1);
+        const float angle = std::atan2(y, x); // 0 = +x axis, -pi/2 = top; the overhang reaches slightly past +-pi/2
+        const float start = FanFirstAngle(groups, group, count) - childPitch * 0.5f;
+        const int index = static_cast<int>(std::floor((angle - start) / childPitch));
+        return index >= 0 && index < count ? index : -1;
     }
     // Inner ring: index of the group under the pointer, or -1.
     inline int GroupHit(float x, float y, int groups) {

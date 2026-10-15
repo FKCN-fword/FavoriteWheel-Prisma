@@ -36,8 +36,9 @@ namespace Wheel {
     inline int PageItemIndex(const View& v,int slot){return v.page*slots+slot-v.itemOffset;}
     // Index of the item tile on the current page under the pointer, or -1.
     inline int WheelSlot(const View& v){
-        if(v.visibleCategories.Count()<=0)return -1;
-        return ItemHit(v.x,v.y,static_cast<int>(v.items.size()));
+        const int groups=v.visibleCategories.Count();
+        if(groups<=0)return -1;
+        return ItemHit(v.x,v.y,groups,v.visibleCategories.Index(v.category),static_cast<int>(v.items.size()));
     }
     View Snapshot();
     bool IsOpen();
