@@ -37,6 +37,34 @@ namespace Wheel {
             }
             return key;
         }
+        struct Fraction { std::string base; int part=0; int whole=0; };
+        std::optional<Fraction> ParseFraction(const std::string& name) {
+            std::string s=name;
+            auto trim=[](std::string& v){ while(!v.empty() && (v.back()==' ' || v.back()=='\t'))v.pop_back(); };
+            trim(s);
+            if(!s.empty() && (s.back()==')' || s.back()==']')) { s.pop_back(); trim(s); }
+            const auto end=s.size();
+            auto at=end;
+            while(at>0 && std::isdigit(static_cast<unsigned char>(s[at-1])))--at;
+            if(at==end || end-at>3)return std::nullopt;
+            const int whole=std::stoi(s.substr(at,end-at));
+            auto slash=at;
+            while(slash>0 && s[slash-1]==' ')--slash;
+            if(slash==0 || s[slash-1]!='/')return std::nullopt;
+            --slash;
+            while(slash>0 && s[slash-1]==' ')--slash;
+            const auto numberEnd=slash;
+            auto numberAt=numberEnd;
+            while(numberAt>0 && std::isdigit(static_cast<unsigned char>(s[numberAt-1])))--numberAt;
+            if(numberAt==numberEnd || numberEnd-numberAt>3)return std::nullopt;
+            const int part=std::stoi(s.substr(numberAt,numberEnd-numberAt));
+            std::string base=s.substr(0,numberAt);
+            trim(base);
+            if(!base.empty() && (base.back()=='(' || base.back()=='['))base.pop_back();
+            trim(base);
+            if(base.empty() || whole<2 || part<1 || part>whole)return std::nullopt;
+            return Fraction{base,part,whole};
+        }
         bool EqualsNoCase(std::string_view a,std::string_view b) {
             return a.size()==b.size() && std::equal(a.begin(),a.end(),b.begin(),[](char x,char y){
                 return std::tolower(static_cast<unsigned char>(x))==std::tolower(static_cast<unsigned char>(y));});
@@ -54,6 +82,20 @@ namespace Wheel {
                 if(!name || !std::string_view(name).contains(config.specialName))return false;
             }
             return true;
+        }
+        // Fill-level consumables ("Waterskin 1/3", "2/3", ...) are listed whenever they are in the inventory,
+        // so the next level shows up without being favorited again. Matches potion/food forms only.
+        bool IsWaterskin(RE::TESBoundObject* object) {
+            if(!object || !object->As<RE::AlchemyItem>())return false;
+            const char* raw=object->GetName();
+            if(!raw || !*raw)return false;
+            const std::string name=raw;
+            if(!ParseFraction(name))return false;
+            std::string lower;
+            lower.reserve(name.size());
+            for(unsigned char c:name)lower.push_back(static_cast<char>(std::tolower(c)));
+            return lower.find("waterskin")!=std::string::npos || lower.find("water skin")!=std::string::npos ||
+                name.find("\xEB\xAC\xBC\xEC\xA3\xBC\xEB\xA8\xB8\xEB\x8B\x88")!=std::string::npos; // UTF-8 for the Korean word "waterskin"
         }
         Category Classify(RE::TESBoundObject* form) {
             if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESAmmo>()) return Category::Weapons;
@@ -110,7 +152,7 @@ namespace Wheel {
         void AppendInventory(std::vector<Item>& result,RE::TESBoundObject* object,int count,
             RE::InventoryEntryData* entry,bool allInventory,const Item* exact=nullptr) {
             if(!object || count<=0)return;
-            const bool special=IsSpecial(object);const bool visibleAll=allInventory||special;
+            const bool special=IsSpecial(object);const bool visibleAll=allInventory||special||IsWaterskin(object);
             const auto category=special?Category::Other:Classify(object);const auto icon=ClassifyIcon(object);const bool usable=Supported(object);
             if(category==Category::Other && !special)return; // Only the configured special items use the 4th group.
             auto append=[&](RE::ExtraDataList* extra,int amount) {
@@ -185,34 +227,6 @@ namespace Wheel {
         // Consumables that come in fill levels ("Waterskin 1/3", "Waterskin 2/3", ...) are separate forms.
         // Show them as one tile named after the base item (the count is the total remaining uses);
         // using the tile drinks the least-full level first.
-        struct Fraction { std::string base; int part=0; int whole=0; };
-        std::optional<Fraction> ParseFraction(const std::string& name) {
-            std::string s=name;
-            auto trim=[](std::string& v){ while(!v.empty() && (v.back()==' ' || v.back()=='\t'))v.pop_back(); };
-            trim(s);
-            if(!s.empty() && (s.back()==')' || s.back()==']')) { s.pop_back(); trim(s); }
-            const auto end=s.size();
-            auto at=end;
-            while(at>0 && std::isdigit(static_cast<unsigned char>(s[at-1])))--at;
-            if(at==end || end-at>3)return std::nullopt;
-            const int whole=std::stoi(s.substr(at,end-at));
-            auto slash=at;
-            while(slash>0 && s[slash-1]==' ')--slash;
-            if(slash==0 || s[slash-1]!='/')return std::nullopt;
-            --slash;
-            while(slash>0 && s[slash-1]==' ')--slash;
-            const auto numberEnd=slash;
-            auto numberAt=numberEnd;
-            while(numberAt>0 && std::isdigit(static_cast<unsigned char>(s[numberAt-1])))--numberAt;
-            if(numberAt==numberEnd || numberEnd-numberAt>3)return std::nullopt;
-            const int part=std::stoi(s.substr(numberAt,numberEnd-numberAt));
-            std::string base=s.substr(0,numberAt);
-            trim(base);
-            if(!base.empty() && (base.back()=='(' || base.back()=='['))base.pop_back();
-            trim(base);
-            if(base.empty() || whole<2 || part<1 || part>whole)return std::nullopt;
-            return Fraction{base,part,whole};
-        }
         void MergeFractions(std::vector<Item>& items) {
             struct Member { std::size_t index=0; int part=0; };
             struct Group { std::string base; std::vector<Member> members; };
@@ -277,7 +291,7 @@ namespace Wheel {
         });
         result.reserve(inventory.size());
         for(const auto& [object,stock]:inventory) {
-            if(stock.count<=0 || (!allInventory && !IsSpecial(object) && (!stock.entry || !stock.entry->IsFavorited())))continue;
+            if(stock.count<=0 || (!allInventory && !IsSpecial(object) && !IsWaterskin(object) && (!stock.entry || !stock.entry->IsFavorited())))continue;
             const auto first=result.size();
             AppendInventory(result,object,static_cast<int>(std::min<std::int64_t>(stock.count,INT_MAX)),stock.entry,allInventory);
             if(includeInfo)for(auto i=first;i<result.size();++i) {
