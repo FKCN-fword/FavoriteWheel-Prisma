@@ -135,6 +135,11 @@ namespace Wheel {
             auto ui = RE::UI::GetSingleton();
             auto controls = RE::ControlMap::GetSingleton();
             if (!Config().enabled) return "disabled";
+            if (Config().blockWhileTyping) {
+                // A text field (game text entry or a focused PrismaUI view) owns the keyboard: typing Q must not open the wheel.
+                if (controls && controls->textEntryCount > 0) return "text input active";
+                if (PrismaFocused()) return "another UI has keyboard focus";
+            }
             if (!RendererReady()) return "renderer not ready";
             if (closing) return "wheel still closing";
             if(Outfits::Busy())return "outfit changing";

@@ -13,6 +13,7 @@ namespace Wheel {
         std::string specialPlugin = "HavenBag.esp"; // Armor from this plugin forms the 4th main group; empty disables it.
         std::string specialName; // Optional name filter (substring) for the special group.
         bool showHints = true;
+        bool blockWhileTyping = true; // Do not open the wheel while a text field has keyboard focus.
         float scale = 1.0f;
         float wheelScale = 1.0f;
         int positionX = 72, positionY = 46;

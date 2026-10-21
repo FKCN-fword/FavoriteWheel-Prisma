@@ -340,6 +340,7 @@ namespace Wheel {
     }
 
     bool RendererReady() { return ViewUsable(); }
+    bool PrismaFocused() { return prisma && prisma->HasAnyActiveFocus(); }
 
     bool InstallRenderer() {
         prisma = PRISMA_UI_API::RequestPluginAPI<PRISMA_UI_API::IVPrismaUI1>();

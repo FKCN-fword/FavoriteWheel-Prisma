@@ -89,6 +89,7 @@ namespace Wheel {
             settings.specialPlugin = Read(file,L"Special",L"Plugin",settings.specialPlugin);
             settings.specialName = Read(file,L"Special",L"Name",settings.specialName);
             settings.showHints = number(L"Display",L"ShowHints",settings.showHints) != 0;
+            settings.blockWhileTyping = number(L"General",L"BlockWhileTyping",settings.blockWhileTyping) != 0;
             settings.wheelScale=number(L"Display",L"WheelScalePercent",static_cast<int>(settings.wheelScale*100))/100.f;
             settings.positionX=number(L"Display",L"PositionXPercent",settings.positionX);
             settings.positionY=number(L"Display",L"PositionYPercent",settings.positionY);
@@ -187,6 +188,7 @@ namespace Wheel {
             write(L"General",L"TimeMode",std::to_string(settings.timeMode)) &&
             write(L"General",L"SlowTimePercent",std::to_string(settings.slowPercent)) &&
             write(L"Display",L"Theme",settings.theme) &&
+            write(L"General",L"BlockWhileTyping",settings.blockWhileTyping?"1":"0") &&
             write(L"Special",L"Plugin",settings.specialPlugin) &&
             write(L"Special",L"Name",settings.specialName) &&
             write(L"Display",L"ShowHints",settings.showHints?"1":"0") &&
