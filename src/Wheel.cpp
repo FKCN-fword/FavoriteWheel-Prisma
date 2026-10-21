@@ -139,6 +139,7 @@ namespace Wheel {
                 // A text field (game text entry or a focused PrismaUI view) owns the keyboard: typing Q must not open the wheel.
                 if (controls && controls->textEntryCount > 0) return "text input active";
                 if (PrismaFocused()) return "another UI has keyboard focus";
+                if (OverlayWidgetActive()) return "overlay text field active";
             }
             if (!RendererReady()) return "renderer not ready";
             if (closing) return "wheel still closing";
